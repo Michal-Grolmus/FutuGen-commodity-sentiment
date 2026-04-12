@@ -1,0 +1,122 @@
+[
+  {
+    "excerpt_id": "opec_01",
+    "audio_file": "audio_samples/sample_01_opec.wav",
+    "description": "OPEC announces production cut of 1 million barrels per day",
+    "transcript_text": "OPEC has just announced a significant production cut of one million barrels per day, effective immediately. The Saudi energy minister stated that this decision was necessary to stabilize global oil markets amid declining demand forecasts. This represents the largest single cut in over three years.",
+    "expected_commodities": ["crude_oil_wti", "crude_oil_brent"],
+    "expected_direction": "bullish",
+    "expected_timeframe": "short_term",
+    "rationale": "Production cuts reduce supply, pushing oil prices up in the near term"
+  },
+  {
+    "excerpt_id": "fed_01",
+    "audio_file": "audio_samples/sample_02_fed_hike.wav",
+    "description": "Federal Reserve raises interest rates by 25 basis points",
+    "transcript_text": "The Federal Reserve has raised interest rates by twenty five basis points, bringing the federal funds rate to five point five percent. Chairman Powell emphasized that inflation remains above the two percent target and further tightening may be necessary. Treasury yields jumped immediately following the announcement.",
+    "expected_commodities": ["gold"],
+    "expected_direction": "bearish",
+    "expected_timeframe": "short_term",
+    "rationale": "Higher interest rates increase opportunity cost of holding gold, reducing demand"
+  },
+  {
+    "excerpt_id": "fed_02",
+    "audio_file": "audio_samples/sample_03_fed_pause.wav",
+    "description": "Fed signals pause in rate hikes, possible cuts ahead",
+    "transcript_text": "In a surprising shift, the Federal Reserve signaled that it will pause interest rate increases and may begin cutting rates in the coming quarters. Powell noted that inflation has cooled significantly and the labor market is showing signs of softening. Markets are now pricing in at least two rate cuts by year end.",
+    "expected_commodities": ["gold", "silver"],
+    "expected_direction": "bullish",
+    "expected_timeframe": "medium_term",
+    "rationale": "Rate cuts lower the opportunity cost of precious metals and weaken the dollar"
+  },
+  {
+    "excerpt_id": "weather_01",
+    "audio_file": "audio_samples/sample_04_drought.wav",
+    "description": "Severe drought conditions across US Midwest threaten crop yields",
+    "transcript_text": "The National Weather Service has issued an extreme drought warning across the US Midwest, covering major corn and wheat producing states including Iowa, Illinois, and Kansas. Crop conditions have deteriorated rapidly over the past two weeks, with soil moisture levels at their lowest in fifteen years. Agricultural analysts are warning of potential yield reductions of twenty to thirty percent.",
+    "expected_commodities": ["wheat", "corn"],
+    "expected_direction": "bullish",
+    "expected_timeframe": "short_term",
+    "rationale": "Severe drought reduces crop supply, driving prices higher"
+  },
+  {
+    "excerpt_id": "sanctions_01",
+    "audio_file": "audio_samples/sample_05_sanctions.wav",
+    "description": "New sanctions on Russian energy exports",
+    "transcript_text": "The European Union has announced a new round of sanctions targeting Russian energy exports, including a complete ban on Russian liquefied natural gas imports and stricter enforcement of the oil price cap. European natural gas futures surged on the news as traders assess the impact on winter supply availability. Energy analysts estimate this could remove up to fifteen percent of European gas supply.",
+    "expected_commodities": ["natural_gas", "crude_oil_brent"],
+    "expected_direction": "bullish",
+    "expected_timeframe": "short_term",
+    "rationale": "Sanctions reduce energy supply, pushing European gas and oil prices higher"
+  },
+  {
+    "excerpt_id": "china_01",
+    "audio_file": "audio_samples/sample_06_china_pmi.wav",
+    "description": "China manufacturing PMI expands, signaling industrial recovery",
+    "transcript_text": "China's manufacturing purchasing managers index came in at fifty two point three, well above the fifty point expansion threshold and beating consensus estimates by a wide margin. The data suggests a robust recovery in Chinese industrial activity, driven by infrastructure spending and export demand. Industrial metals markets responded positively to the news.",
+    "expected_commodities": ["copper"],
+    "expected_direction": "bullish",
+    "expected_timeframe": "medium_term",
+    "rationale": "China is the world's largest copper consumer; manufacturing expansion drives demand"
+  },
+  {
+    "excerpt_id": "inflation_01",
+    "audio_file": "audio_samples/sample_07_cpi.wav",
+    "description": "CPI data comes in higher than expected",
+    "transcript_text": "The consumer price index rose four point one percent year over year, significantly above the expected three point six percent. Core inflation also surprised to the upside, rising to three point eight percent. The hotter than expected inflation data is reigniting concerns about persistent price pressures and is likely to drive investors toward traditional inflation hedges.",
+    "expected_commodities": ["gold", "silver"],
+    "expected_direction": "bullish",
+    "expected_timeframe": "short_term",
+    "rationale": "Higher inflation drives demand for precious metals as inflation hedges"
+  },
+  {
+    "excerpt_id": "inventory_01",
+    "audio_file": "audio_samples/sample_08_oil_inventory.wav",
+    "description": "US crude oil inventories show larger than expected build",
+    "transcript_text": "The Energy Information Administration reported a crude oil inventory build of eight point two million barrels, far exceeding the expected two million barrel build. Gasoline stocks also rose by three million barrels. The data suggests weakening demand as the driving season winds down, and refineries are processing less crude amid seasonal maintenance shutdowns.",
+    "expected_commodities": ["crude_oil_wti"],
+    "expected_direction": "bearish",
+    "expected_timeframe": "short_term",
+    "rationale": "Higher than expected inventory builds signal oversupply, pushing prices down"
+  },
+  {
+    "excerpt_id": "geopolitical_01",
+    "audio_file": "audio_samples/sample_09_mideast.wav",
+    "description": "Middle East tensions escalate with attacks on shipping",
+    "transcript_text": "Tensions in the Middle East have escalated significantly following attacks on commercial shipping vessels in the Strait of Hormuz. Two oil tankers were reportedly hit by drone strikes, disrupting one of the world's most critical oil transit chokepoints. Approximately twenty percent of global oil trade passes through this strait. Military forces in the region have been placed on high alert.",
+    "expected_commodities": ["crude_oil_wti", "crude_oil_brent"],
+    "expected_direction": "bullish",
+    "expected_timeframe": "short_term",
+    "rationale": "Disruption of major oil transit route threatens supply, spiking prices"
+  },
+  {
+    "excerpt_id": "neutral_01",
+    "audio_file": "audio_samples/sample_10_neutral.wav",
+    "description": "General market commentary with no clear signal",
+    "transcript_text": "Looking at the broader market today, we see mixed signals across various asset classes. Equity markets are trading relatively flat as investors await several key data releases later this week. Trading volumes remain subdued and market participants appear to be in a wait and see mode ahead of the upcoming earnings season.",
+    "expected_commodities": [],
+    "expected_direction": "neutral",
+    "expected_timeframe": "short_term",
+    "rationale": "General commentary without specific commodity directional signals"
+  },
+  {
+    "excerpt_id": "mining_01",
+    "audio_file": "audio_samples/sample_11_copper_mine.wav",
+    "description": "Major copper mine strike disrupts production",
+    "transcript_text": "Workers at the Escondida copper mine in Chile, the world's largest copper mine, have gone on strike demanding better working conditions and higher wages. Production at the mine, which accounts for approximately five percent of global copper output, has been completely halted. Union leaders say negotiations have broken down and the strike could last several weeks.",
+    "expected_commodities": ["copper"],
+    "expected_direction": "bullish",
+    "expected_timeframe": "short_term",
+    "rationale": "Major mine shutdown reduces global copper supply, pushing prices higher"
+  },
+  {
+    "excerpt_id": "mixed_01",
+    "audio_file": "audio_samples/sample_12_mixed.wav",
+    "description": "Mixed signals: strong dollar but geopolitical risk",
+    "transcript_text": "The US dollar index has strengthened to a six month high following strong employment data, which typically puts downward pressure on gold prices. However, escalating geopolitical tensions in Eastern Europe are driving safe haven demand. Gold is caught between these competing forces, with the strong dollar weighing on prices but risk aversion providing support. Analysts remain divided on the near term outlook.",
+    "expected_commodities": ["gold"],
+    "expected_direction": "neutral",
+    "expected_timeframe": "short_term",
+    "rationale": "Competing forces of strong dollar and geopolitical risk create ambiguity"
+  }
+]
