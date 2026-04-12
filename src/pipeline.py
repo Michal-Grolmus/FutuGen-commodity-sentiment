@@ -77,6 +77,7 @@ class Pipeline:
             model_size=self._settings.whisper_model_size,
             device=self._settings.whisper_device,
             compute_type=self._settings.whisper_compute_type,
+            language=self._settings.whisper_language or None,
         )
 
         # Build analysis (requires API key)
@@ -153,7 +154,12 @@ class Pipeline:
                     Path(chunk.audio_path).unlink(missing_ok=True)
                 except OSError:
                     pass
-                if transcript.full_text.strip():
+                # Filter: skip empty or low-confidence transcripts
+                if (
+                    transcript.full_text.strip()
+                    and transcript.language_probability >= 0.5
+                    and len(transcript.full_text.split()) >= 3
+                ):
                     await self._transcript_q.put(transcript)
                     await self._broadcaster.publish(PipelineEvent(
                         event_type="transcript",

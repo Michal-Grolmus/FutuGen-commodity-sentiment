@@ -11,6 +11,7 @@ class Settings(BaseSettings):
     whisper_model_size: str = "base"
     whisper_device: str = "cpu"
     whisper_compute_type: str = "int8"
+    whisper_language: str = "en"  # force English; empty string = auto-detect
 
     # Ingestion
     chunk_duration_s: int = 10
