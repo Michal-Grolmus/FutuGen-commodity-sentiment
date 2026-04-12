@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from rich.console import Console
 from rich.live import Live
@@ -40,7 +40,7 @@ class TerminalDisplay:
 
     def update(self, result: ScoringResult) -> None:
         self._chunks_processed += 1
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         for sig in result.signals:
             self._signals.append((now, sig))
         self._signals = self._signals[-self._max_signals:]

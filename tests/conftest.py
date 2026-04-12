@@ -1,20 +1,15 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
 from src.models import (
-    AudioChunk,
     CommodityMention,
-    CommoditySignal,
-    Direction,
     EconomicIndicator,
     ExtractionResult,
     PersonMention,
-    Timeframe,
     Transcript,
     TranscriptSegment,
     WordTimestamp,

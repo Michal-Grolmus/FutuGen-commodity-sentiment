@@ -11,7 +11,6 @@ from src.models import (
     PipelineEvent,
     ScoringResult,
     Timeframe,
-    Transcript,
 )
 
 

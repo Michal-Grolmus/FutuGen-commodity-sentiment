@@ -3,7 +3,6 @@ from __future__ import annotations
 import asyncio
 import logging
 import shutil
-import tempfile
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -94,7 +93,10 @@ class Pipeline:
                 self._settings.slack_webhook_url,
                 self._settings.notification_confidence_threshold,
             )
-            logger.info("Slack notifications enabled (threshold=%.1f)", self._settings.notification_confidence_threshold)
+            logger.info(
+                "Slack notifications enabled (threshold=%.1f)",
+                self._settings.notification_confidence_threshold,
+            )
 
         # Bonus: Price tracking
         if self._settings.enable_price_tracking:
@@ -117,7 +119,7 @@ class Pipeline:
                 asyncio.gather(*tasks, return_exceptions=True),
                 timeout=self._settings.pipeline_timeout_s,
             )
-        except asyncio.TimeoutError:
+        except TimeoutError:
             logger.info("Pipeline timeout reached (%ds).", self._settings.pipeline_timeout_s)
         except asyncio.CancelledError:
             logger.info("Pipeline cancelled.")

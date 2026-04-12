@@ -50,10 +50,29 @@ Toto nainstaluje vsechny knihovny: Whisper, FastAPI, Anthropic SDK atd.
 ## Krok 2: Overeni instalace (testy)
 
 ```bash
+# Spust testy
 pytest tests/ -v
+
+# Spust testy s coverage reportem
+pytest tests/ --cov=src --cov-report=term-missing
+
+# Spust linter (melo by ukazat 0 chyb)
+ruff check src/ tests/ evaluation/
 ```
 
-Ocekavany vysledek: **27 passed** (vsechny testy zelene).
+Ocekavany vysledek: **39 passed, 73% coverage** (vsechny testy zelene).
+
+Test suite pokryva:
+- Pydantic modely (validace, serializace)
+- Audio ingestion (chunking realnych souboru)
+- Whisper transkripce (TTS i realne Bloomberg audio)
+- Entity extrakce a impact scoring (mocked Claude)
+- Error handling (malformed JSON, neplatne hodnoty)
+- Dashboard (FastAPI endpointy)
+- CLI argumenty (--input-file, --help)
+- **Integracni test celeho pipeline** (file → STT → extraction → scoring → dashboard)
+- Evaluacni framework (metriky, confusion matrix)
+- Yahoo Finance klient
 
 Pokud neco selze, zkontroluj:
 - Python verze: `python --version` (musi byt 3.11+)
@@ -66,8 +85,15 @@ Pokud neco selze, zkontroluj:
 Tento test nevyzaduje zadny API klic — pouziva jen lokalni Whisper model.
 
 ```bash
+# Varianta A: CLI argumenty (doporuceno)
+python -m src.main --input-file audio_samples/sample_01_opec.wav
+
+# Varianta B: environment variable
 set INPUT_FILE=audio_samples/sample_01_opec.wav
 python -m src.main
+
+# Napoveda ke vsem argumentum
+python -m src.main --help
 ```
 
 Co se stane:

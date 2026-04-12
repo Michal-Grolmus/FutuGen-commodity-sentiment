@@ -91,7 +91,7 @@ class SignalBroadcaster:
                 try:
                     event = await asyncio.wait_for(q.get(), timeout=30.0)
                     yield {"event": event.event_type, "data": event.model_dump_json()}
-                except asyncio.TimeoutError:
+                except TimeoutError:
                     yield {"event": "keepalive", "data": "{}"}
         finally:
             try:

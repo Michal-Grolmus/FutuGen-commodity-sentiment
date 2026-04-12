@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from src.models import CommoditySignal, Direction, GroundTruthLabel, Timeframe
 from evaluation.dataset import compute_metrics, evaluate_prediction
+from src.models import CommoditySignal, Direction, GroundTruthLabel, Timeframe
 
 
 def _make_signal(commodity: str, direction: Direction, confidence: float = 0.8) -> CommoditySignal:

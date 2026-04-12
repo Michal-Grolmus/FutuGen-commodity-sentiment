@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-from collections import Counter
 from pathlib import Path
 
 from src.models import (
@@ -60,7 +59,9 @@ def compute_metrics(predictions: list[EvalPrediction]) -> dict[str, object]:
 
     # Confusion matrix
     labels = [Direction.BULLISH, Direction.BEARISH, Direction.NEUTRAL]
-    confusion: dict[str, dict[str, int]] = {l.value: {l2.value: 0 for l2 in labels} for l in labels}
+    confusion: dict[str, dict[str, int]] = {
+        label.value: {l2.value: 0 for l2 in labels} for label in labels
+    }
 
     for pred in predictions:
         actual = pred.ground_truth.expected_direction.value

@@ -22,7 +22,11 @@ class SlackNotifier:
         if not self._webhook_url:
             return
 
-        emoji = {"bullish": ":chart_with_upwards_trend:", "bearish": ":chart_with_downwards_trend:", "neutral": ":left_right_arrow:"}
+        emoji = {
+            "bullish": ":chart_with_upwards_trend:",
+            "bearish": ":chart_with_downwards_trend:",
+            "neutral": ":left_right_arrow:",
+        }
         direction_emoji = emoji.get(signal.direction.value, "")
 
         payload = {

@@ -7,7 +7,6 @@ import uuid
 import wave
 from collections.abc import AsyncIterator
 from pathlib import Path
-
 from urllib.parse import urlparse
 
 from src.ingestion.audio_source import AudioSource
@@ -61,7 +60,7 @@ class StreamIngestor(AudioSource):
                         buffer = buffer[chunk_bytes:]
                         chunk_index += 1
 
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 logger.warning("Stream read timeout, reconnecting...")
             except Exception:
                 logger.exception("Stream error")
