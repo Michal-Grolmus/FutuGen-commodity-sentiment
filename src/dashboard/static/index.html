@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Commodity Sentiment Monitor</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <header>
+    <h1>Commodity Sentiment Monitor</h1>
+    <div id="stats">
+      <span id="stat-chunks">Chunks: 0</span>
+      <span id="stat-signals">Signals: 0</span>
+      <span id="stat-cost">Cost: $0.00</span>
+      <span id="stat-status" class="status-connecting">Connecting...</span>
+    </div>
+  </header>
+
+  <main>
+    <section id="signals-container">
+      <h2>Live Signals</h2>
+      <div id="signals-list"></div>
+    </section>
+
+    <section id="transcript-container">
+      <h2>Latest Transcript</h2>
+      <div id="transcript-text"></div>
+    </section>
+  </main>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
