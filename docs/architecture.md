@@ -67,7 +67,7 @@ The Commodity Sentiment Monitor is a real-time pipeline that processes live audi
 **Technology**: faster-whisper (CTranslate2-optimized Whisper)
 
 **Key decisions**:
-- `base` model for demo (good speed/quality tradeoff on CPU)
+- `small` model as default (best quality/speed tradeoff on CPU)
 - int8 quantization for CPU deployment
 - VAD filter enabled to skip silence
 - Runs in `ThreadPoolExecutor` to avoid blocking the event loop
@@ -82,8 +82,12 @@ The Commodity Sentiment Monitor is a real-time pipeline that processes live audi
 **Key decisions**:
 - Two-stage approach (extraction then scoring) for modularity and debuggability
 - Canonical commodity identifiers for consistent output
+- Few-shot examples in prompts for improved accuracy
 - JSON structured output for reliable parsing
 - Conservative confidence scoring (>0.8 = very clear signal only)
+- **RAG context enrichment**: Scorer retrieves current commodity prices from Yahoo Finance
+  and includes them in the LLM prompt, enabling price-aware impact assessment
+- **Backtesting**: Evaluation framework compares generated signals against historical price movements
 
 ## Data Flow
 

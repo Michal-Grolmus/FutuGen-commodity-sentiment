@@ -79,11 +79,18 @@ class Pipeline:
             language=self._settings.whisper_language or None,
         )
 
+        # Bonus: Price tracking (also used as RAG context for scorer)
+        if self._settings.enable_price_tracking:
+            self._price_client = PriceClient()
+            logger.info("Price tracking enabled (RAG context for scoring).")
+
         # Build analysis (requires API key)
         if self._settings.anthropic_api_key:
             client = AsyncAnthropic(api_key=self._settings.anthropic_api_key)
             self._extractor = EntityExtractor(client, self._settings.anthropic_model_extraction)
-            self._scorer = ImpactScorer(client, self._settings.anthropic_model_scoring)
+            self._scorer = ImpactScorer(
+                client, self._settings.anthropic_model_scoring, price_client=self._price_client,
+            )
         else:
             logger.warning("No ANTHROPIC_API_KEY — analysis layer disabled, transcription only.")
 
@@ -97,11 +104,6 @@ class Pipeline:
                 "Slack notifications enabled (threshold=%.1f)",
                 self._settings.notification_confidence_threshold,
             )
-
-        # Bonus: Price tracking
-        if self._settings.enable_price_tracking:
-            self._price_client = PriceClient()
-            logger.info("Historical price tracking enabled.")
 
         # Terminal display
         self._terminal = TerminalDisplay()
@@ -189,13 +191,6 @@ class Pipeline:
                     ))
 
                     scoring = await self._scorer.score(extraction)
-
-                    # Bonus: enrich signals with current price data
-                    if self._price_client:
-                        for sig in scoring.signals:
-                            price = self._price_client.get_current_price(sig.commodity)
-                            if price is not None:
-                                sig.rationale += f" (current price: ${price:.2f})"
                 else:
                     scoring = ScoringResult(
                         chunk_id=transcript.chunk_id,

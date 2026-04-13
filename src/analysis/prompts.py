@@ -93,6 +93,8 @@ For each commodity, produce a signal with:
 - **timeframe**: "short_term" (hours to days) or "medium_term" (weeks to months)
 
 Consider supply/demand dynamics, geopolitical context, and historical precedent. \
+If current market prices are provided (RAG context), factor them into your assessment — \
+for example, a production cut when prices are already high may have less upside impact. \
 If evidence is ambiguous, assign "neutral" with lower confidence.
 
 ## Examples
