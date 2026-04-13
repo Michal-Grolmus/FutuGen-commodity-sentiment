@@ -8,7 +8,7 @@ class Settings(BaseSettings):
     anthropic_model_scoring: str = "claude-haiku-4-5-20251001"
 
     # Whisper
-    whisper_model_size: str = "base"
+    whisper_model_size: str = "small"  # small = best quality/speed tradeoff on CPU
     whisper_device: str = "cpu"
     whisper_compute_type: str = "int8"
     whisper_language: str = "en"  # force English; empty string = auto-detect
