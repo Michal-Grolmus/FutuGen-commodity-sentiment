@@ -7,8 +7,9 @@ build/
 .mypy_cache/
 .pytest_cache/
 .ruff_cache/
-evaluation/results/*.md
-evaluation/results/*.json
+# Keep generated evaluation report (actual results, not template)
+!evaluation/results/evaluation_report.md
+!evaluation/results/predictions.json
 *.wav
 *.mp3
 !audio_samples/*.wav

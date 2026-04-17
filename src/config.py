@@ -27,7 +27,7 @@ class Settings(BaseSettings):
     dashboard_port: int = 8000
 
     # Bonus: prices
-    enable_price_tracking: bool = False
+    enable_price_tracking: bool = True  # RAG: enrich scoring with live commodity prices
 
     # Bonus: notifications
     slack_webhook_url: str = ""

@@ -14,6 +14,7 @@ from pathlib import Path
 
 from anthropic import AsyncAnthropic
 
+from evaluation.backtesting import backtest_signals, format_backtest_report
 from evaluation.dataset import compute_metrics, evaluate_prediction, generate_report, load_test_set
 from src.analysis.entity_extractor import EntityExtractor
 from src.analysis.impact_scorer import ImpactScorer
@@ -104,9 +105,25 @@ async def run_eval(test_set_path: str) -> None:
     logger.info("Avg commodity recall: %.1f%%", metrics["avg_commodity_recall"] * 100)
     logger.info("Total API cost: $%.4f", total_cost)
 
+    # Backtesting: compare signals against historical price movements
+    all_signals = [sig for p in predictions for sig in p.predicted_signals]
+    if all_signals:
+        backtest_results = backtest_signals(all_signals)
+        if backtest_results:
+            backtest_md = format_backtest_report(backtest_results)
+            logger.info("Backtesting: %d signals tested", len(backtest_results))
+        else:
+            backtest_md = "\n## Backtesting Results\n\nNo price data available for backtesting.\n"
+    else:
+        backtest_md = ""
+
     # Save results
     report_path = "evaluation/results/evaluation_report.md"
     generate_report(metrics, report_path)
+    # Append backtesting results to report
+    if backtest_md:
+        with open(report_path, "a", encoding="utf-8") as f:
+            f.write("\n" + backtest_md)
     logger.info("Report saved: %s", report_path)
 
     # Save raw predictions
