@@ -13,13 +13,13 @@ from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from sse_starlette.sse import EventSourceResponse
 from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.requests import Request
 
 from src.models import CommoditySignal, PipelineEvent
 
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator
 
-    from starlette.requests import Request
     from starlette.responses import Response
 
 logger = logging.getLogger(__name__)
@@ -281,7 +281,7 @@ def create_app(broadcaster: SignalBroadcaster | None = None) -> FastAPI:
     async def demo_stream(request: Request) -> EventSourceResponse:
         """Stream saved evaluation results as live demo (no API key needed)."""
 
-        async def demo_generator() -> AsyncGenerator[dict[str, str], None]:
+        async def generate() -> AsyncGenerator[dict[str, str], None]:
             predictions_path = PROJECT_ROOT / "evaluation" / "results" / "predictions.json"
             if not predictions_path.exists():
                 yield {"event": "error", "data": '{"error":"No demo data available"}'}
@@ -294,46 +294,46 @@ def create_app(broadcaster: SignalBroadcaster | None = None) -> FastAPI:
                 if await request.is_disconnected():
                     break
 
-                # Build signal event from prediction
                 gt = pred.get("ground_truth", {})
                 signals = pred.get("predicted_signals", [])
+                eid = pred.get("excerpt_id", "demo")
 
+                # Send transcript first
+                text = gt.get("transcript_text", gt.get("description", ""))
+                if text:
+                    yield {
+                        "event": "transcript",
+                        "data": json.dumps({
+                            "event_type": "transcript", "chunk_id": eid,
+                            "timestamp": "2025-01-01T00:00:00Z",
+                            "transcript": {
+                                "chunk_id": eid, "language": "en",
+                                "language_probability": 1.0, "segments": [],
+                                "full_text": text, "processing_time_s": 0.5,
+                            },
+                        }),
+                    }
+
+                await asyncio.sleep(1.0)
+
+                # Then send signals
                 if signals:
-                    event_data = {
-                        "event_type": "signal",
-                        "chunk_id": pred.get("excerpt_id", "demo"),
-                        "timestamp": "2025-01-01T00:00:00Z",
-                        "scoring": {
-                            "chunk_id": pred.get("excerpt_id", "demo"),
-                            "signals": signals,
-                            "model_used": "claude-haiku-4-5 (demo replay)",
-                            "input_tokens": 0,
-                            "output_tokens": 0,
-                            "processing_time_s": 0.8,
-                        },
+                    yield {
+                        "event": "signal",
+                        "data": json.dumps({
+                            "event_type": "signal", "chunk_id": eid,
+                            "timestamp": "2025-01-01T00:00:00Z",
+                            "scoring": {
+                                "chunk_id": eid, "signals": signals,
+                                "model_used": "claude-haiku-4-5 (demo)",
+                                "input_tokens": 0, "output_tokens": 0,
+                                "processing_time_s": 0.8,
+                            },
+                        }),
                     }
-                    yield {"event": "signal", "data": json.dumps(event_data)}
 
-                # Also send transcript event
-                transcript_text = gt.get("transcript_text", gt.get("description", ""))
-                if transcript_text:
-                    t_event = {
-                        "event_type": "transcript",
-                        "chunk_id": pred.get("excerpt_id", "demo"),
-                        "timestamp": "2025-01-01T00:00:00Z",
-                        "transcript": {
-                            "chunk_id": pred.get("excerpt_id", "demo"),
-                            "language": "en",
-                            "language_probability": 1.0,
-                            "segments": [],
-                            "full_text": transcript_text,
-                            "processing_time_s": 0.5,
-                        },
-                    }
-                    yield {"event": "transcript", "data": json.dumps(t_event)}
+                await asyncio.sleep(2.0)
 
-                await asyncio.sleep(2.0)  # Simulate real-time pacing
-
-        return EventSourceResponse(demo_generator())
+        return EventSourceResponse(generate())
 
     return app

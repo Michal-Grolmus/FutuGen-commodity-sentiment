@@ -4,7 +4,6 @@ import argparse
 import asyncio
 import logging
 import os
-import sys
 
 import uvicorn
 
@@ -64,16 +63,7 @@ async def main() -> None:
         os.environ["CHUNK_DURATION_S"] = str(args.chunk_duration)
 
     settings = Settings()
-
-    if not settings.input_file and not settings.stream_url:
-        logger.error(
-            "No input source. Use --input-file/-f or --stream-url/-s, "
-            "or set INPUT_FILE/STREAM_URL in .env"
-        )
-        sys.exit(1)
-
     broadcaster = SignalBroadcaster()
-    pipeline = Pipeline(settings, broadcaster)
     app = create_app(broadcaster)
 
     config = uvicorn.Config(
@@ -84,13 +74,20 @@ async def main() -> None:
     )
     server = uvicorn.Server(config)
 
-    logger.info("Dashboard: http://%s:%d", settings.dashboard_host, settings.dashboard_port)
-    logger.info("Starting pipeline...")
+    has_source = bool(settings.input_file or settings.stream_url)
 
-    await asyncio.gather(
-        pipeline.run(),
-        server.serve(),
-    )
+    if has_source:
+        # Full mode: pipeline + dashboard
+        pipeline = Pipeline(settings, broadcaster)
+        logger.info("Dashboard: http://%s:%d", settings.dashboard_host, settings.dashboard_port)
+        logger.info("Starting pipeline with source: %s", settings.input_file or settings.stream_url)
+        await asyncio.gather(pipeline.run(), server.serve())
+    else:
+        # Dashboard-only mode: onboarding + demo replay
+        logger.info("Dashboard: http://%s:%d", settings.dashboard_host, settings.dashboard_port)
+        logger.info("No input source — starting in dashboard-only mode (onboarding + demo).")
+        logger.info("Use --input-file or --stream-url to start the pipeline.")
+        await server.serve()
 
 
 if __name__ == "__main__":
