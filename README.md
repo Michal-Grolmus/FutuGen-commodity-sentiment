@@ -32,15 +32,21 @@ git clone <repo-url>
 cd commodity-sentiment-monitor
 pip install -e ".[dev]"
 
-# Configure
-cp .env.example .env
-# Edit .env: set ANTHROPIC_API_KEY and INPUT_FILE
+# Start dashboard (no configuration needed!)
+python -m src.main
 
+# Open http://localhost:8000 → click "Start Demo" to see it in action
+```
+
+The app starts in **onboarding mode** with an interactive demo — no API key required.
+For live analysis, set `ANTHROPIC_API_KEY` in `.env` and provide an audio source.
+
+```bash
 # Run with local audio file
-INPUT_FILE=audio_samples/sample_01_opec.wav python -m src.main
+python -m src.main --input-file audio_samples/sample_01_opec.wav
 
-# Open dashboard
-# http://localhost:8000
+# Run with live YouTube stream
+python -m src.main --stream-url "https://www.youtube.com/watch?v=LIVE_ID"
 ```
 
 ### Docker
@@ -90,6 +96,20 @@ INPUT_FILE=audio_samples/sample_01_opec.wav python -m src.main
 ```bash
 STREAM_URL="https://www.youtube.com/watch?v=LIVE_ID" python -m src.main
 ```
+
+### Demo Mode (No API Key Needed)
+
+Start the app without configuration → onboarding page appears with:
+- **"Start Demo"** button — replays 12 real evaluation scenarios as live SSE stream
+- **Stream discovery** — curated list of Bloomberg, CNBC, and recorded sources
+- **API key setup** — instructions for connecting Anthropic API
+
+Dashboard features:
+- **Live signals** with bullish/bearish/neutral cards and confidence bars
+- **Sentiment summary bar** — real-time bullish/bearish ratio
+- **Confidence heatmap** — 8 commodities with color-coded confidence
+- **Commodity prices** — 30-day sparkline charts from Yahoo Finance
+- **Latency monitor** — STT/extraction/scoring performance in footer
 
 ### Transcription-Only Mode
 

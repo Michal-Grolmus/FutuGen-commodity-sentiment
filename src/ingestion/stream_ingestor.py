@@ -88,7 +88,7 @@ class StreamIngestor(AudioSource):
             "-f", "s16le", "-acodec", "pcm_s16le",
             "-ar", str(SAMPLE_RATE), "-ac", "1",
             "pipe:1",
-            stdin=ytdlp.stdout,
+            stdin=ytdlp.stdout,  # type: ignore[arg-type]
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.DEVNULL,
         )

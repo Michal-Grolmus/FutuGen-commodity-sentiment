@@ -37,7 +37,8 @@ class EntityExtractor:
                 messages=[{"role": "user", "content": transcript.full_text}],
             )
 
-            raw = response.content[0].text
+            block = response.content[0]
+            raw = block.text if hasattr(block, "text") else ""
             data = json.loads(raw)
             elapsed = time.perf_counter() - t0
 

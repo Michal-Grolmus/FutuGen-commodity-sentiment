@@ -18,6 +18,14 @@
 
 No errors.
 
+## Confidence Calibration
+
+- **Total signals generated**: 17
+- **Average confidence**: 0.76
+- **High confidence (>=0.7)**: 13 signals
+- **Low confidence (<0.7)**: 4 signals
+
+
 ## Improvement Suggestions
 
 - Add more context via RAG (historical price data, recent news) to improve scoring accuracy

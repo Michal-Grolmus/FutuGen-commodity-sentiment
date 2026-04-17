@@ -14,13 +14,12 @@ from fastapi.staticfiles import StaticFiles
 from sse_starlette.sse import EventSourceResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
+from starlette.responses import Response
 
 from src.models import CommoditySignal, PipelineEvent
 
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator
-
-    from starlette.responses import Response
 
 logger = logging.getLogger(__name__)
 
@@ -71,6 +70,7 @@ CURATED_STREAMS = [
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next: object) -> Response:
         response = await call_next(request)  # type: ignore[operator]
+        assert isinstance(response, Response)  # mypy: narrow type
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["X-Frame-Options"] = "DENY"
         response.headers["X-XSS-Protection"] = "1; mode=block"
@@ -120,8 +120,8 @@ class SignalBroadcaster:
             self._stats["avg_scoring_latency_ms"] = (
                 sum(self._scoring_latencies) / len(self._scoring_latencies)
             )
-            self._stats["chunks_processed"] = int(self._stats["chunks_processed"]) + 1
-            self._stats["total_signals"] = int(self._stats["total_signals"]) + len(
+            self._stats["chunks_processed"] = int(str(self._stats["chunks_processed"])) + 1
+            self._stats["total_signals"] = int(str(self._stats["total_signals"])) + len(
                 event.scoring.signals
             )
             # Cost: Haiku 4.5 input $0.80/MTok, output $4.00/MTok
@@ -134,7 +134,7 @@ class SignalBroadcaster:
                     event.extraction.input_tokens * 0.80 / 1_000_000
                     + event.extraction.output_tokens * 4.0 / 1_000_000
                 )
-            self._stats["total_cost_usd"] = float(self._stats["total_cost_usd"]) + cost
+            self._stats["total_cost_usd"] = float(str(self._stats["total_cost_usd"])) + cost
 
             for sig in event.scoring.signals:
                 self._recent_signals.append(sig)

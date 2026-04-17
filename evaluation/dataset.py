@@ -88,12 +88,21 @@ def compute_metrics(predictions: list[EvalPrediction]) -> dict[str, object]:
         if not p.direction_correct
     ]
 
+    # Confidence calibration: are high-confidence predictions more accurate?
+    all_signals = [s for p in predictions for s in p.predicted_signals]
+    high_conf = [s for s in all_signals if s.confidence >= 0.7]
+    low_conf = [s for s in all_signals if s.confidence < 0.7]
+
     return {
         "total_excerpts": n,
         "direction_accuracy": direction_accuracy,
         "avg_commodity_recall": avg_commodity_recall,
         "confusion_matrix": confusion,
         "errors": errors,
+        "total_signals": len(all_signals),
+        "avg_confidence": sum(s.confidence for s in all_signals) / len(all_signals) if all_signals else 0,
+        "high_confidence_count": len(high_conf),
+        "low_confidence_count": len(low_conf),
     }
 
 
@@ -134,6 +143,23 @@ def generate_report(metrics: dict[str, object], output_path: str) -> None:
                 f"- **{err['excerpt_id']}**: expected {err['expected']}, "
                 f"got {err['predicted']} — {err['description']}"
             )
+
+    # Confidence calibration section
+    total_signals = metrics.get("total_signals", 0)
+    avg_conf = metrics.get("avg_confidence", 0)
+    high_conf = metrics.get("high_confidence_count", 0)
+    low_conf = metrics.get("low_confidence_count", 0)
+
+    lines.extend([
+        "",
+        "## Confidence Calibration",
+        "",
+        f"- **Total signals generated**: {total_signals}",
+        f"- **Average confidence**: {avg_conf:.2f}",
+        f"- **High confidence (>=0.7)**: {high_conf} signals",
+        f"- **Low confidence (<0.7)**: {low_conf} signals",
+        "",
+    ])
 
     lines.extend([
         "",

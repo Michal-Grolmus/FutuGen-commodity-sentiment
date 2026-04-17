@@ -63,7 +63,8 @@ class ImpactScorer:
                 messages=[{"role": "user", "content": user_message}],
             )
 
-            raw = response.content[0].text
+            block = response.content[0]
+            raw = block.text if hasattr(block, "text") else ""
             data = json.loads(raw)
             elapsed = time.perf_counter() - t0
 
