@@ -84,8 +84,13 @@ class Pipeline:
             self._price_client = PriceClient()
             logger.info("Price tracking enabled (RAG context for scoring).")
 
-        # Build analysis (requires API key)
-        if self._settings.anthropic_api_key:
+        # Build analysis
+        if self._settings.use_mock_analyzer:
+            from src.analysis.mock_analyzer import MockExtractor, MockScorer
+            self._extractor = MockExtractor()  # type: ignore[assignment]
+            self._scorer = MockScorer()  # type: ignore[assignment]
+            logger.info("Using mock analyzer (keyword-based, zero API cost).")
+        elif self._settings.anthropic_api_key:
             client = AsyncAnthropic(api_key=self._settings.anthropic_api_key)
             self._extractor = EntityExtractor(client, self._settings.anthropic_model_extraction)
             self._scorer = ImpactScorer(

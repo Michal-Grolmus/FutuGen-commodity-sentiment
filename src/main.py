@@ -44,6 +44,10 @@ def parse_args() -> argparse.Namespace:
         "--chunk-duration", "-c", type=int, default=None,
         help="Audio chunk duration in seconds (default: 10). Overrides CHUNK_DURATION_S env var.",
     )
+    parser.add_argument(
+        "--mock", action="store_true",
+        help="Use keyword-based mock analyzer instead of Claude API (zero cost).",
+    )
     return parser.parse_args()
 
 
@@ -61,6 +65,8 @@ async def main() -> None:
         os.environ["WHISPER_MODEL_SIZE"] = args.whisper_model
     if args.chunk_duration is not None:
         os.environ["CHUNK_DURATION_S"] = str(args.chunk_duration)
+    if args.mock:
+        os.environ["USE_MOCK_ANALYZER"] = "true"
 
     settings = Settings()
     broadcaster = SignalBroadcaster()

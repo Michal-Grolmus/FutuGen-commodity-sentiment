@@ -4,6 +4,8 @@ from pydantic_settings import BaseSettings
 class Settings(BaseSettings):
     # Anthropic
     anthropic_api_key: str = ""
+    anthropic_base_url: str = ""  # empty = default
+    use_mock_analyzer: bool = False  # --mock flag: keyword-based, zero API cost
     anthropic_model_extraction: str = "claude-haiku-4-5-20251001"
     anthropic_model_scoring: str = "claude-haiku-4-5-20251001"
 
