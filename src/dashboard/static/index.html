@@ -12,84 +12,53 @@
     <div class="onboard-card">
       <h1>Commodity Sentiment Monitor</h1>
       <p class="subtitle">Real-time commodity impact analysis from live streams</p>
-
       <div class="onboard-section">
         <h3>1. Try the interactive demo</h3>
-        <p>Watch 12 real evaluation scenarios replay live — no API key needed.</p>
         <button onclick="startDemo()" class="btn-demo">Start Demo</button>
       </div>
-
       <div class="onboard-section">
-        <h3>2. Or connect your API key for live analysis</h3>
+        <h3>2. Or connect your API key</h3>
         <div class="key-input-row">
           <input id="api-key-input" type="password" placeholder="sk-ant-..." />
-          <button onclick="saveApiKey()" class="btn-primary">Save &amp; Start</button>
+          <button onclick="saveApiKey()" class="btn-primary">Save</button>
         </div>
-        <a href="https://console.anthropic.com/settings/keys" target="_blank" class="link">Get an API key at console.anthropic.com &rarr;</a>
+        <a href="https://console.anthropic.com/settings/keys" target="_blank" class="link">Get an API key &rarr;</a>
       </div>
-
       <div class="onboard-section">
-        <h3>3. Select a stream source</h3>
+        <h3>3. Add a stream source</h3>
         <div id="stream-picker"></div>
       </div>
     </div>
   </div>
 
-  <!-- DASHBOARD -->
-  <div id="dashboard" class="hidden">
-    <header>
-      <div class="header-left">
-        <h1>Commodity Sentiment Monitor</h1>
-        <button id="btn-settings" onclick="showOnboarding()" title="Settings">&#9881;</button>
-      </div>
-      <div id="stats">
-        <span id="stat-chunks">Chunks: 0</span>
-        <span id="stat-signals">Signals: 0</span>
-        <span id="stat-cost">Cost: $0.00</span>
-        <span id="stat-status" class="status-connecting">Connecting...</span>
-      </div>
-    </header>
+  <!-- MAIN APP -->
+  <div id="app" class="hidden">
+    <!-- NAV -->
+    <nav>
+      <h1>CSM</h1>
+      <button id="nav-streams" class="nav-btn active" onclick="showView('streams')">Streams</button>
+      <button id="nav-commodities" class="nav-btn" onclick="showView('commodities')">Commodities</button>
+      <div class="nav-spacer"></div>
+      <span id="nav-status" class="status-connecting">...</span>
+    </nav>
 
-    <!-- SENTIMENT SUMMARY BAR -->
-    <div id="sentiment-bar">
-      <div id="sent-bullish" class="sent-segment bullish" style="width:0%"><span></span></div>
-      <div id="sent-neutral" class="sent-segment neutral" style="width:0%"><span></span></div>
-      <div id="sent-bearish" class="sent-segment bearish" style="width:0%"><span></span></div>
+    <!-- STREAMS VIEW -->
+    <div id="view-streams" class="view">
+      <div class="view-header">
+        <h2>Active Streams</h2>
+        <button onclick="showOnboarding()" class="btn-sm">+ Add Stream</button>
+      </div>
+      <div id="streams-list"></div>
+      <div id="no-streams" class="empty-state">No active streams. <a href="#" onclick="showOnboarding()">Add one &rarr;</a></div>
     </div>
 
-    <main>
-      <div class="col-left">
-        <section id="signals-container">
-          <h2>Live Signals</h2>
-          <div id="signals-list"></div>
-        </section>
-
-        <section id="heatmap-container">
-          <h2>Confidence Heatmap</h2>
-          <div id="heatmap"></div>
-        </section>
+    <!-- COMMODITIES VIEW -->
+    <div id="view-commodities" class="view hidden">
+      <div class="view-header">
+        <h2>Commodities</h2>
       </div>
-
-      <div class="col-right">
-        <section id="prices-container">
-          <h2>Commodity Prices (30d)</h2>
-          <div id="prices-grid"></div>
-        </section>
-
-        <section id="transcript-container">
-          <h2>Latest Transcript</h2>
-          <div id="transcript-text"></div>
-        </section>
-      </div>
-    </main>
-
-    <footer id="latency-bar">
-      <span>Pipeline:</span>
-      <span id="lat-stt">STT: --</span>
-      <span id="lat-extract">Extract: --</span>
-      <span id="lat-score">Score: --</span>
-      <span id="lat-throughput">--</span>
-    </footer>
+      <div id="commodities-grid"></div>
+    </div>
   </div>
 
   <script src="/static/app.js"></script>

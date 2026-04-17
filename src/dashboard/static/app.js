@@ -1,16 +1,20 @@
 // ===== STATE =====
-let chunksCount = 0, signalsCount = 0, reconnectDelay = 1000;
-let currentSource = null, isDemoMode = false;
-let activeSSE = null;  // track active EventSource to prevent loops
-let sentimentCounts = { bullish: 0, bearish: 0, neutral: 0 };
+let activeSSE = null;
+let isDemoMode = false;
 
-const ALL_COMMODITIES = [
-  "crude_oil_wti", "crude_oil_brent", "natural_gas", "gold",
-  "silver", "wheat", "corn", "copper"
-];
-const COMMODITY_NAMES = {
-  crude_oil_wti: "WTI", crude_oil_brent: "Brent", natural_gas: "Nat Gas",
-  gold: "Gold", silver: "Silver", wheat: "Wheat", corn: "Corn", copper: "Copper"
+// Stream data: { streamId: { name, url, type, transcript, signals[] } }
+const streams = {};
+
+// Commodity data: { commodityId: { display_name, events[] } }
+const commodities = {
+  crude_oil_wti: { display_name: "WTI Crude Oil", events: [] },
+  crude_oil_brent: { display_name: "Brent Crude Oil", events: [] },
+  natural_gas: { display_name: "Natural Gas", events: [] },
+  gold: { display_name: "Gold", events: [] },
+  silver: { display_name: "Silver", events: [] },
+  wheat: { display_name: "Wheat", events: [] },
+  corn: { display_name: "Corn", events: [] },
+  copper: { display_name: "Copper", events: [] },
 };
 
 // ===== INIT =====
@@ -19,57 +23,69 @@ async function init() {
   if (!config.has_api_key && !config.input_source) {
     showOnboarding();
   } else {
-    showDashboard();
-    if (config.mock_mode) {
-      const status = document.getElementById("stat-status");
-      status.textContent = "Mock Mode";
-      status.className = "status-demo";
-    }
+    const source = config.input_source || "Pipeline";
+    addStream("default", source, config.mock_mode ? "mock" : "live");
+    showApp("streams");
     connect("/api/events");
+    if (config.mock_mode) setStatus("Mock Mode", "status-demo");
   }
 }
 
 async function fetchJSON(url) {
-  try { const r = await fetch(url); return await r.json(); }
-  catch { return {}; }
+  try { const r = await fetch(url); return await r.json(); } catch { return {}; }
 }
 
-function escapeHtml(text) {
-  if (!text) return "";
-  const d = document.createElement("div"); d.textContent = text; return d.innerHTML;
+function escapeHtml(t) {
+  if (!t) return "";
+  const d = document.createElement("div"); d.textContent = t; return d.innerHTML;
+}
+
+function setStatus(text, cls) {
+  const el = document.getElementById("nav-status");
+  el.textContent = text; el.className = cls;
+}
+
+// ===== NAVIGATION =====
+function showOnboarding() {
+  if (activeSSE) { activeSSE.close(); activeSSE = null; }
+  document.getElementById("onboarding").classList.remove("hidden");
+  document.getElementById("app").classList.add("hidden");
+  loadStreamPicker();
+}
+
+function showApp(view) {
+  document.getElementById("onboarding").classList.add("hidden");
+  document.getElementById("app").classList.remove("hidden");
+  showView(view || "streams");
+  renderCommodities();
+}
+
+function showView(view) {
+  document.getElementById("view-streams").classList.toggle("hidden", view !== "streams");
+  document.getElementById("view-commodities").classList.toggle("hidden", view !== "commodities");
+  document.getElementById("nav-streams").classList.toggle("active", view === "streams");
+  document.getElementById("nav-commodities").classList.toggle("active", view === "commodities");
+  if (view === "commodities") renderCommodities();
+  if (view === "streams") renderStreams();
 }
 
 // ===== ONBOARDING =====
-function showOnboarding() {
-  // Close any active SSE
-  if (activeSSE) { activeSSE.close(); activeSSE = null; }
-  document.getElementById("onboarding").classList.remove("hidden");
-  document.getElementById("dashboard").classList.add("hidden");
-  loadStreams();
-}
-
-function showDashboard() {
-  document.getElementById("onboarding").classList.add("hidden");
-  document.getElementById("dashboard").classList.remove("hidden");
-  initHeatmap();
-  loadPrices();
-}
-
-async function loadStreams() {
-  const streams = await fetchJSON("/api/streams");
+async function loadStreamPicker() {
+  const list = await fetchJSON("/api/streams");
   const picker = document.getElementById("stream-picker");
-  if (!picker || !streams.length) return;
+  if (!picker) return;
   picker.innerHTML = "";
-  for (const s of streams) {
+  for (const s of list) {
     const div = document.createElement("div");
     div.className = "stream-option";
-    div.innerHTML = `<span class="name">${escapeHtml(s.name)}</span>
-      <span class="type-badge ${s.type}">${s.type}</span>
-      <div class="desc">${escapeHtml(s.description)}</div>`;
+    div.innerHTML = `<span class="name">${escapeHtml(s.name)}</span><span class="type-badge ${s.type}">${s.type}</span><div class="desc">${escapeHtml(s.description)}</div>`;
     div.onclick = () => {
-      document.querySelectorAll(".stream-option").forEach(el => el.classList.remove("selected"));
-      div.classList.add("selected");
-      currentSource = s;
+      addStream(s.name, s.url, s.type);
+      showApp("streams");
+      // For file sources, we'd need to restart pipeline — show info
+      if (s.type === "file") {
+        alert(`To analyze this file, restart with:\npython -m src.main --mock -f ${s.url}`);
+      }
     };
     picker.appendChild(div);
   }
@@ -78,235 +94,178 @@ async function loadStreams() {
 function saveApiKey() {
   const key = document.getElementById("api-key-input").value.trim();
   if (!key) return;
-  alert(
-    "To use a live API key:\n\n" +
-    "1. Create a .env file in the project root\n" +
-    "2. Add: ANTHROPIC_API_KEY=" + key.substring(0, 10) + "...\n" +
-    "3. Restart the server\n\n" +
-    "For now, click 'Start Demo' to see the system in action."
-  );
+  alert("Set in .env:\nANTHROPIC_API_KEY=" + key.substring(0, 12) + "...\nThen restart the server.");
 }
 
 function startDemo() {
   isDemoMode = true;
-  // Reset state
-  chunksCount = 0; signalsCount = 0;
-  sentimentCounts = { bullish: 0, bearish: 0, neutral: 0 };
-  showDashboard();
-  document.getElementById("signals-list").innerHTML = "";
-  document.getElementById("transcript-text").innerHTML = "";
-  const status = document.getElementById("stat-status");
-  status.textContent = "Demo Mode";
-  status.className = "status-demo";
+  addStream("demo", "Demo Replay (12 scenarios)", "demo");
+  showApp("streams");
+  setStatus("Demo Mode", "status-demo");
   connect("/api/demo");
 }
 
-// ===== SSE CONNECTION =====
+// ===== STREAM MANAGEMENT =====
+function addStream(id, url, type) {
+  if (!streams[id]) {
+    streams[id] = { name: id, url, type, transcript: "", signals: [] };
+  }
+}
+
+function renderStreams() {
+  const container = document.getElementById("streams-list");
+  const noStreams = document.getElementById("no-streams");
+  const keys = Object.keys(streams);
+  noStreams.classList.toggle("hidden", keys.length > 0);
+  container.innerHTML = "";
+
+  for (const [id, s] of Object.entries(streams)) {
+    const visibleSignals = s.signals.slice(-3);
+    const totalSignals = s.signals.length;
+    const card = document.createElement("div");
+    card.className = "stream-card";
+    card.id = `stream-${id}`;
+
+    let signalsHtml = visibleSignals.map(sig => renderSignalItem(sig)).join("");
+    let expandHtml = totalSignals > 3
+      ? `<div class="stream-signals-header" onclick="toggleStreamSignals('${id}')">Show all ${totalSignals} signals ▸</div><div id="stream-all-${id}" class="hidden">${s.signals.map(sig => renderSignalItem(sig)).join("")}</div>`
+      : "";
+
+    card.innerHTML = `
+      <div class="stream-card-header">
+        <span class="stream-name">${escapeHtml(s.name)}</span>
+        <span class="stream-status">${escapeHtml(s.type)}</span>
+      </div>
+      <div class="stream-transcript" id="transcript-${id}">${escapeHtml(s.transcript) || '<span style="color:#484f58">Waiting for transcript...</span>'}</div>
+      <div class="stream-signals">
+        ${signalsHtml}
+        ${expandHtml}
+      </div>`;
+    container.appendChild(card);
+  }
+}
+
+function toggleStreamSignals(id) {
+  const el = document.getElementById(`stream-all-${id}`);
+  if (el) el.classList.toggle("hidden");
+}
+
+// ===== COMMODITY VIEW =====
+function renderCommodities() {
+  const grid = document.getElementById("commodities-grid");
+  if (!grid) return;
+  grid.innerHTML = "";
+
+  for (const [id, c] of Object.entries(commodities)) {
+    const latest = c.events.length > 0 ? c.events[c.events.length - 1] : null;
+    const badgeClass = latest ? latest.direction : "none";
+    const badgeText = latest ? `${latest.direction} ${Math.round(latest.confidence * 100)}%` : "No data";
+    const visible = c.events.slice(-3);
+    const total = c.events.length;
+
+    const card = document.createElement("div");
+    card.className = "commodity-card";
+
+    let eventsHtml = visible.map(e => renderSignalItem(e)).join("");
+    let expandHtml = total > 3
+      ? `<div class="stream-signals-header" onclick="toggleCommodityEvents('${id}')">Show all ${total} events ▸</div><div id="commodity-all-${id}" class="hidden">${c.events.map(e => renderSignalItem(e)).join("")}</div>`
+      : "";
+
+    card.innerHTML = `
+      <div class="commodity-card-header" onclick="toggleCommodityEvents('${id}_main')">
+        <div>
+          <span class="commodity-title">${escapeHtml(c.display_name)}</span>
+          <span class="commodity-count">${total} event${total !== 1 ? "s" : ""}</span>
+        </div>
+        <span class="commodity-badge ${badgeClass}">${badgeText}</span>
+      </div>
+      <div class="commodity-events${total > 0 ? " open" : ""}" id="commodity-${id}_main">
+        ${eventsHtml || '<div style="color:#484f58;font-size:0.8rem;padding:0.5rem 0">No events detected yet</div>'}
+        ${expandHtml}
+      </div>`;
+    grid.appendChild(card);
+  }
+}
+
+function toggleCommodityEvents(id) {
+  const el = document.getElementById(`commodity-${id}`);
+  if (el) el.classList.toggle("open");
+  const allEl = document.getElementById(`commodity-all-${id}`);
+  if (allEl) allEl.classList.toggle("hidden");
+}
+
+// ===== SHARED SIGNAL RENDERER =====
+function renderSignalItem(sig) {
+  const time = sig._time || new Date().toLocaleTimeString();
+  return `<div class="signal-item">
+    <span class="signal-dir ${sig.direction}">${sig.direction}</span>
+    <div class="signal-info">
+      <div class="signal-name">${escapeHtml(sig.display_name || sig.commodity)}</div>
+      <div class="signal-rationale">${escapeHtml(sig.rationale)}</div>
+    </div>
+    <div class="signal-meta">${time}<br>${(sig.timeframe || "").replace("_", " ")}</div>
+    <div class="signal-conf">${Math.round((sig.confidence || 0) * 100)}%</div>
+  </div>`;
+}
+
+// ===== SSE =====
 function connect(endpoint) {
   if (activeSSE) activeSSE.close();
   const source = new EventSource(endpoint);
   activeSSE = source;
-  const status = document.getElementById("stat-status");
 
   source.onopen = () => {
-    if (!isDemoMode) { status.textContent = "Connected"; status.className = "status-connected"; }
-    reconnectDelay = 1000;
+    if (!isDemoMode) setStatus("Connected", "status-connected");
   };
 
   source.onerror = () => {
-    if (isDemoMode) {
-      status.textContent = "Demo Complete";
-      status.className = "status-demo";
-      source.close();
-      activeSSE = null;
-      return;
-    }
-    status.textContent = "Reconnecting..."; status.className = "status-error";
+    if (isDemoMode) { setStatus("Demo Complete", "status-demo"); source.close(); activeSSE = null; return; }
+    setStatus("Reconnecting...", "status-connecting");
     source.close(); activeSSE = null;
-    setTimeout(() => connect(endpoint), reconnectDelay);
-    reconnectDelay = Math.min(reconnectDelay * 2, 30000);
+    setTimeout(() => connect(endpoint), 3000);
   };
+
+  source.addEventListener("transcript", (e) => {
+    const event = JSON.parse(e.data);
+    const t = event.transcript;
+    if (!t) return;
+    // Update the first stream's transcript
+    const streamId = Object.keys(streams)[0];
+    if (streamId && streams[streamId]) {
+      streams[streamId].transcript = t.full_text;
+      const el = document.getElementById(`transcript-${streamId}`);
+      if (el) el.textContent = t.full_text;
+    }
+  });
 
   source.addEventListener("signal", (e) => {
     const event = JSON.parse(e.data);
     const scoring = event.scoring;
     if (!scoring) return;
-    chunksCount++;
-    document.getElementById("stat-chunks").textContent = `Chunks: ${chunksCount}`;
-    for (const signal of scoring.signals) {
-      signalsCount++;
-      document.getElementById("stat-signals").textContent = `Signals: ${signalsCount}`;
-      addSignalCard(signal);
-      updateHeatmapCell(signal);
-      updateSentiment(signal.direction);
+
+    const streamId = Object.keys(streams)[0];
+    for (const sig of scoring.signals) {
+      sig._time = new Date().toLocaleTimeString();
+
+      // Add to stream
+      if (streamId && streams[streamId]) {
+        streams[streamId].signals.push(sig);
+      }
+
+      // Add to commodity
+      const cid = sig.commodity;
+      if (commodities[cid]) {
+        commodities[cid].events.push(sig);
+      }
     }
-  });
 
-  source.addEventListener("transcript", (e) => {
-    const event = JSON.parse(e.data);
-    if (event.transcript) addTranscript(event.transcript);
-  });
-
-  source.addEventListener("extraction", (e) => {
-    const event = JSON.parse(e.data);
-    if (event.extraction) addExtraction(event.extraction);
+    // Re-render active view
+    if (!document.getElementById("view-streams").classList.contains("hidden")) renderStreams();
+    if (!document.getElementById("view-commodities").classList.contains("hidden")) renderCommodities();
   });
 
   source.addEventListener("keepalive", () => {});
 }
-
-// ===== SIGNAL CARDS =====
-function addSignalCard(signal) {
-  const list = document.getElementById("signals-list");
-  const card = document.createElement("div");
-  card.className = `signal-card ${signal.direction}`;
-  const time = new Date().toLocaleTimeString();
-  const confPct = Math.round(signal.confidence * 100);
-  card.innerHTML = `
-    <div class="signal-header">
-      <span class="signal-commodity">${escapeHtml(signal.display_name)}</span>
-      <span class="signal-direction ${signal.direction}">${signal.direction.toUpperCase()}</span>
-    </div>
-    <div class="signal-meta">
-      <span>${time}</span>
-      <span>Conf: ${confPct}%
-        <span class="confidence-bar"><span class="confidence-fill" style="width:${confPct}%"></span></span>
-      </span>
-      <span>${(signal.timeframe || "").replace("_", " ")}</span>
-    </div>
-    <div class="signal-rationale">${escapeHtml(signal.rationale)}</div>`;
-  list.prepend(card);
-  while (list.children.length > 30) list.removeChild(list.lastChild);
-}
-
-// ===== SENTIMENT SUMMARY =====
-function updateSentiment(direction) {
-  sentimentCounts[direction] = (sentimentCounts[direction] || 0) + 1;
-  const total = sentimentCounts.bullish + sentimentCounts.bearish + sentimentCounts.neutral;
-  if (total === 0) return;
-  const bPct = (sentimentCounts.bullish / total * 100);
-  const nPct = (sentimentCounts.neutral / total * 100);
-  const ePct = (sentimentCounts.bearish / total * 100);
-  const bEl = document.getElementById("sent-bullish");
-  const nEl = document.getElementById("sent-neutral");
-  const eEl = document.getElementById("sent-bearish");
-  bEl.style.width = bPct + "%";
-  nEl.style.width = nPct + "%";
-  eEl.style.width = ePct + "%";
-  bEl.querySelector("span").textContent = bPct >= 15 ? `Bullish ${Math.round(bPct)}%` : "";
-  nEl.querySelector("span").textContent = nPct >= 15 ? `Neutral ${Math.round(nPct)}%` : "";
-  eEl.querySelector("span").textContent = ePct >= 15 ? `Bearish ${Math.round(ePct)}%` : "";
-}
-
-// ===== TRANSCRIPT =====
-function addTranscript(t) {
-  const el = document.getElementById("transcript-text");
-  const div = document.createElement("div");
-  div.className = "transcript-chunk";
-  div.innerHTML = `<div class="transcript-time">${escapeHtml(t.chunk_id)} [${escapeHtml(t.language)}]</div>
-    <div>${escapeHtml(t.full_text)}</div>`;
-  el.prepend(div);
-  while (el.children.length > 20) el.removeChild(el.lastChild);
-}
-
-function addExtraction(ext) {
-  if (!ext.commodities || ext.commodities.length === 0) return;
-  const el = document.getElementById("transcript-text");
-  const parts = [];
-  if (ext.commodities.length) parts.push("Commodities: " + ext.commodities.map(c => c.display_name).join(", "));
-  if (ext.people && ext.people.length) parts.push("People: " + ext.people.map(p => p.name).join(", "));
-  const div = document.createElement("div");
-  div.className = "transcript-chunk";
-  div.innerHTML = `<div class="transcript-time">Entities [${escapeHtml(ext.chunk_id)}]</div>
-    <div>${escapeHtml(parts.join(" | "))}</div>`;
-  el.prepend(div);
-}
-
-// ===== HEATMAP =====
-function initHeatmap() {
-  const hm = document.getElementById("heatmap");
-  if (!hm) return;
-  hm.innerHTML = "";
-  for (const c of ALL_COMMODITIES) {
-    const cell = document.createElement("div");
-    cell.className = "heatmap-cell empty";
-    cell.id = `hm-${c}`;
-    cell.innerHTML = `<div class="name">${COMMODITY_NAMES[c]}</div><div class="conf">--</div>`;
-    hm.appendChild(cell);
-  }
-}
-
-function updateHeatmapCell(signal) {
-  const cell = document.getElementById(`hm-${signal.commodity}`);
-  if (!cell) return;
-  const conf = Math.round(signal.confidence * 100);
-  const dir = signal.direction;
-  let cls = "empty";
-  if (dir === "bullish") cls = signal.confidence > 0.7 ? "bullish-strong" : "bullish-weak";
-  else if (dir === "bearish") cls = signal.confidence > 0.7 ? "bearish-strong" : "bearish-weak";
-  else cls = "neutral";
-  cell.className = `heatmap-cell ${cls}`;
-  cell.querySelector(".conf").textContent = `${conf}%`;
-}
-
-// ===== PRICES =====
-async function loadPrices() {
-  const grid = document.getElementById("prices-grid");
-  if (!grid) return;
-  grid.innerHTML = "<div style='color:#8b949e;font-size:0.8rem;grid-column:1/-1'>Loading prices...</div>";
-
-  const prices = await fetchJSON("/api/prices");
-  if (!prices || !Object.keys(prices).length) {
-    grid.innerHTML = "<div style='color:#484f58;font-size:0.8rem;grid-column:1/-1'>Price data unavailable</div>";
-    return;
-  }
-  grid.innerHTML = "";
-  for (const [commodity, data] of Object.entries(prices)) {
-    const card = document.createElement("div");
-    card.className = "price-card";
-    const changeDir = (data.change_24h || 0) >= 0 ? "up" : "down";
-    const changeSign = changeDir === "up" ? "+" : "";
-    const changeVal = data.change_24h != null ? `${changeSign}${data.change_24h.toFixed(2)}` : "--";
-    card.innerHTML = `
-      <div class="commodity-name">${escapeHtml(data.display_name)}</div>
-      <div class="price-value">$${data.price.toFixed(2)}</div>
-      <div class="price-change ${changeDir}">${changeVal} (24h)</div>
-      <svg id="spark-${commodity}" viewBox="0 0 100 30" preserveAspectRatio="none"></svg>`;
-    grid.appendChild(card);
-    loadSparkline(commodity, changeDir);
-  }
-}
-
-async function loadSparkline(commodity, direction) {
-  const data = await fetchJSON(`/api/prices/${commodity}`);
-  const svg = document.getElementById(`spark-${commodity}`);
-  if (!svg || !data.history || data.history.length < 2) return;
-  const prices = data.history.map(h => h.close);
-  const min = Math.min(...prices), max = Math.max(...prices);
-  const range = max - min || 1;
-  const points = prices.map((p, i) =>
-    `${(i / (prices.length - 1)) * 100},${30 - ((p - min) / range) * 28}`
-  ).join(" ");
-  svg.innerHTML = `<polyline class="sparkline ${direction}" points="${points}"/>`;
-}
-
-// ===== LATENCY MONITOR =====
-async function pollStats() {
-  const stats = await fetchJSON("/api/stats");
-  if (stats.total_cost_usd != null)
-    document.getElementById("stat-cost").textContent = `Cost: $${stats.total_cost_usd.toFixed(4)}`;
-  const stt = stats.avg_stt_latency_ms;
-  const ext = stats.avg_extraction_latency_ms;
-  const scr = stats.avg_scoring_latency_ms;
-  if (stt) document.getElementById("lat-stt").textContent = `STT: ${Math.round(stt)}ms`;
-  if (ext) document.getElementById("lat-extract").textContent = `Extract: ${Math.round(ext)}ms`;
-  if (scr) document.getElementById("lat-score").textContent = `Score: ${Math.round(scr)}ms`;
-  const chunks = stats.chunks_processed || 0;
-  if (chunks > 0)
-    document.getElementById("lat-throughput").textContent = `${chunks} chunks processed`;
-}
-
-setInterval(pollStats, 5000);
 
 // ===== START =====
 init();
