@@ -223,8 +223,10 @@ def create_app(broadcaster: SignalBroadcaster | None = None) -> FastAPI:
     async def get_config() -> dict[str, object]:
         """Return current configuration state for onboarding UI."""
         has_key = bool(os.environ.get("ANTHROPIC_API_KEY", ""))
+        mock = os.environ.get("USE_MOCK_ANALYZER", "").lower() == "true"
         return {
-            "has_api_key": has_key,
+            "has_api_key": has_key or mock,
+            "mock_mode": mock,
             "whisper_model": os.environ.get("WHISPER_MODEL_SIZE", "small"),
             "price_tracking": os.environ.get("ENABLE_PRICE_TRACKING", "true"),
             "input_source": os.environ.get("INPUT_FILE", "") or os.environ.get("STREAM_URL", ""),

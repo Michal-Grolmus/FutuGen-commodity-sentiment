@@ -20,6 +20,11 @@ async function init() {
     showOnboarding();
   } else {
     showDashboard();
+    if (config.mock_mode) {
+      const status = document.getElementById("stat-status");
+      status.textContent = "Mock Mode";
+      status.className = "status-demo";
+    }
     connect("/api/events");
   }
 }
