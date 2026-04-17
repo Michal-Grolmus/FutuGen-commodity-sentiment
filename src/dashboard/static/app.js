@@ -1,6 +1,8 @@
 // ===== STATE =====
 let chunksCount = 0, signalsCount = 0, reconnectDelay = 1000;
 let currentSource = null, isDemoMode = false;
+let activeSSE = null;  // track active EventSource to prevent loops
+let sentimentCounts = { bullish: 0, bearish: 0, neutral: 0 };
 
 const ALL_COMMODITIES = [
   "crude_oil_wti", "crude_oil_brent", "natural_gas", "gold",
@@ -28,11 +30,14 @@ async function fetchJSON(url) {
 }
 
 function escapeHtml(text) {
+  if (!text) return "";
   const d = document.createElement("div"); d.textContent = text; return d.innerHTML;
 }
 
 // ===== ONBOARDING =====
 function showOnboarding() {
+  // Close any active SSE
+  if (activeSSE) { activeSSE.close(); activeSSE = null; }
   document.getElementById("onboarding").classList.remove("hidden");
   document.getElementById("dashboard").classList.add("hidden");
   loadStreams();
@@ -67,14 +72,24 @@ async function loadStreams() {
 
 function saveApiKey() {
   const key = document.getElementById("api-key-input").value.trim();
-  if (!key) return alert("Please enter an API key");
-  // In a real app this would POST to server. For demo, show dashboard.
-  alert("API key would be saved server-side. For now, set ANTHROPIC_API_KEY in .env and restart.");
+  if (!key) return;
+  alert(
+    "To use a live API key:\n\n" +
+    "1. Create a .env file in the project root\n" +
+    "2. Add: ANTHROPIC_API_KEY=" + key.substring(0, 10) + "...\n" +
+    "3. Restart the server\n\n" +
+    "For now, click 'Start Demo' to see the system in action."
+  );
 }
 
 function startDemo() {
   isDemoMode = true;
+  // Reset state
+  chunksCount = 0; signalsCount = 0;
+  sentimentCounts = { bullish: 0, bearish: 0, neutral: 0 };
   showDashboard();
+  document.getElementById("signals-list").innerHTML = "";
+  document.getElementById("transcript-text").innerHTML = "";
   const status = document.getElementById("stat-status");
   status.textContent = "Demo Mode";
   status.className = "status-demo";
@@ -83,7 +98,9 @@ function startDemo() {
 
 // ===== SSE CONNECTION =====
 function connect(endpoint) {
+  if (activeSSE) activeSSE.close();
   const source = new EventSource(endpoint);
+  activeSSE = source;
   const status = document.getElementById("stat-status");
 
   source.onopen = () => {
@@ -92,9 +109,15 @@ function connect(endpoint) {
   };
 
   source.onerror = () => {
-    if (isDemoMode) { status.textContent = "Demo Complete"; return; }
+    if (isDemoMode) {
+      status.textContent = "Demo Complete";
+      status.className = "status-demo";
+      source.close();
+      activeSSE = null;
+      return;
+    }
     status.textContent = "Reconnecting..."; status.className = "status-error";
-    source.close();
+    source.close(); activeSSE = null;
     setTimeout(() => connect(endpoint), reconnectDelay);
     reconnectDelay = Math.min(reconnectDelay * 2, 30000);
   };
@@ -108,8 +131,9 @@ function connect(endpoint) {
     for (const signal of scoring.signals) {
       signalsCount++;
       document.getElementById("stat-signals").textContent = `Signals: ${signalsCount}`;
-      addSignalCard(signal, event.timestamp);
+      addSignalCard(signal);
       updateHeatmapCell(signal);
+      updateSentiment(signal.direction);
     }
   });
 
@@ -127,25 +151,46 @@ function connect(endpoint) {
 }
 
 // ===== SIGNAL CARDS =====
-function addSignalCard(signal, timestamp) {
+function addSignalCard(signal) {
   const list = document.getElementById("signals-list");
   const card = document.createElement("div");
   card.className = `signal-card ${signal.direction}`;
-  const time = timestamp ? new Date(timestamp).toLocaleTimeString() : new Date().toLocaleTimeString();
+  const time = new Date().toLocaleTimeString();
   const confPct = Math.round(signal.confidence * 100);
   card.innerHTML = `
     <div class="signal-header">
       <span class="signal-commodity">${escapeHtml(signal.display_name)}</span>
-      <span class="signal-direction ${signal.direction}">${escapeHtml(signal.direction)}</span>
+      <span class="signal-direction ${signal.direction}">${signal.direction.toUpperCase()}</span>
     </div>
     <div class="signal-meta">
       <span>${time}</span>
-      <span>Conf: ${confPct}% <span class="confidence-bar"><span class="confidence-fill" style="width:${confPct}%"></span></span></span>
-      <span>${escapeHtml((signal.timeframe || "").replace("_", " "))}</span>
+      <span>Conf: ${confPct}%
+        <span class="confidence-bar"><span class="confidence-fill" style="width:${confPct}%"></span></span>
+      </span>
+      <span>${(signal.timeframe || "").replace("_", " ")}</span>
     </div>
     <div class="signal-rationale">${escapeHtml(signal.rationale)}</div>`;
   list.prepend(card);
-  while (list.children.length > 40) list.removeChild(list.lastChild);
+  while (list.children.length > 30) list.removeChild(list.lastChild);
+}
+
+// ===== SENTIMENT SUMMARY =====
+function updateSentiment(direction) {
+  sentimentCounts[direction] = (sentimentCounts[direction] || 0) + 1;
+  const total = sentimentCounts.bullish + sentimentCounts.bearish + sentimentCounts.neutral;
+  if (total === 0) return;
+  const bPct = (sentimentCounts.bullish / total * 100);
+  const nPct = (sentimentCounts.neutral / total * 100);
+  const ePct = (sentimentCounts.bearish / total * 100);
+  const bEl = document.getElementById("sent-bullish");
+  const nEl = document.getElementById("sent-neutral");
+  const eEl = document.getElementById("sent-bearish");
+  bEl.style.width = bPct + "%";
+  nEl.style.width = nPct + "%";
+  eEl.style.width = ePct + "%";
+  bEl.querySelector("span").textContent = bPct >= 15 ? `Bullish ${Math.round(bPct)}%` : "";
+  nEl.querySelector("span").textContent = nPct >= 15 ? `Neutral ${Math.round(nPct)}%` : "";
+  eEl.querySelector("span").textContent = ePct >= 15 ? `Bearish ${Math.round(ePct)}%` : "";
 }
 
 // ===== TRANSCRIPT =====
@@ -245,15 +290,15 @@ async function pollStats() {
   const stats = await fetchJSON("/api/stats");
   if (stats.total_cost_usd != null)
     document.getElementById("stat-cost").textContent = `Cost: $${stats.total_cost_usd.toFixed(4)}`;
-  if (stats.avg_stt_latency_ms != null)
-    document.getElementById("lat-stt").textContent = `STT: ${Math.round(stats.avg_stt_latency_ms)}ms`;
-  if (stats.avg_extraction_latency_ms != null)
-    document.getElementById("lat-extract").textContent = `Extract: ${Math.round(stats.avg_extraction_latency_ms)}ms`;
-  if (stats.avg_scoring_latency_ms != null)
-    document.getElementById("lat-score").textContent = `Score: ${Math.round(stats.avg_scoring_latency_ms)}ms`;
+  const stt = stats.avg_stt_latency_ms;
+  const ext = stats.avg_extraction_latency_ms;
+  const scr = stats.avg_scoring_latency_ms;
+  if (stt) document.getElementById("lat-stt").textContent = `STT: ${Math.round(stt)}ms`;
+  if (ext) document.getElementById("lat-extract").textContent = `Extract: ${Math.round(ext)}ms`;
+  if (scr) document.getElementById("lat-score").textContent = `Score: ${Math.round(scr)}ms`;
   const chunks = stats.chunks_processed || 0;
   if (chunks > 0)
-    document.getElementById("lat-throughput").textContent = `Throughput: ~${chunks}/session`;
+    document.getElementById("lat-throughput").textContent = `${chunks} chunks processed`;
 }
 
 setInterval(pollStats, 5000);
