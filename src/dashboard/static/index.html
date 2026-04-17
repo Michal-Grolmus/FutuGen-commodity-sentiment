@@ -7,27 +7,81 @@
   <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
-  <header>
-    <h1>Commodity Sentiment Monitor</h1>
-    <div id="stats">
-      <span id="stat-chunks">Chunks: 0</span>
-      <span id="stat-signals">Signals: 0</span>
-      <span id="stat-cost">Cost: $0.00</span>
-      <span id="stat-status" class="status-connecting">Connecting...</span>
+  <!-- ONBOARDING (shown when no API key) -->
+  <div id="onboarding" class="hidden">
+    <div class="onboard-card">
+      <h1>Commodity Sentiment Monitor</h1>
+      <p class="subtitle">Real-time commodity impact analysis from live streams</p>
+
+      <div class="onboard-section">
+        <h3>Quick Start</h3>
+        <p>Set your Anthropic API key to enable live analysis, or try the demo mode.</p>
+        <div class="key-input-row">
+          <input id="api-key-input" type="password" placeholder="sk-ant-..." />
+          <button onclick="saveApiKey()" class="btn-primary">Save &amp; Start</button>
+        </div>
+        <a href="https://console.anthropic.com/settings/keys" target="_blank" class="link">Get an API key &rarr;</a>
+      </div>
+
+      <div class="onboard-section">
+        <h3>Or try the demo</h3>
+        <p>See real evaluation results replayed live — no API key needed.</p>
+        <button onclick="startDemo()" class="btn-demo">Start Demo</button>
+      </div>
+
+      <div class="onboard-section">
+        <h3>Select a stream source</h3>
+        <div id="stream-picker"></div>
+      </div>
     </div>
-  </header>
+  </div>
 
-  <main>
-    <section id="signals-container">
-      <h2>Live Signals</h2>
-      <div id="signals-list"></div>
-    </section>
+  <!-- MAIN DASHBOARD -->
+  <div id="dashboard" class="hidden">
+    <header>
+      <h1>Commodity Sentiment Monitor</h1>
+      <div id="stats">
+        <span id="stat-chunks">Chunks: 0</span>
+        <span id="stat-signals">Signals: 0</span>
+        <span id="stat-cost">Cost: $0.00</span>
+        <span id="stat-status" class="status-connecting">Connecting...</span>
+      </div>
+    </header>
 
-    <section id="transcript-container">
-      <h2>Latest Transcript</h2>
-      <div id="transcript-text"></div>
-    </section>
-  </main>
+    <main>
+      <div class="col-left">
+        <section id="signals-container">
+          <h2>Live Signals</h2>
+          <div id="signals-list"></div>
+        </section>
+
+        <section id="heatmap-container">
+          <h2>Confidence Heatmap</h2>
+          <div id="heatmap"></div>
+        </section>
+      </div>
+
+      <div class="col-right">
+        <section id="prices-container">
+          <h2>Commodity Prices (30d)</h2>
+          <div id="prices-grid"></div>
+        </section>
+
+        <section id="transcript-container">
+          <h2>Latest Transcript</h2>
+          <div id="transcript-text"></div>
+        </section>
+      </div>
+    </main>
+
+    <footer id="latency-bar">
+      <span>Pipeline Latency:</span>
+      <span id="lat-stt">STT: --ms</span>
+      <span id="lat-extract">Extract: --ms</span>
+      <span id="lat-score">Score: --ms</span>
+      <span id="lat-throughput">Throughput: --/min</span>
+    </footer>
+  </div>
 
   <script src="/static/app.js"></script>
 </body>
