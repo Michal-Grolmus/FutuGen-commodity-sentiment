@@ -125,6 +125,11 @@ a.stream-url:hover { text-decoration: underline; }
   padding: 3px 10px; border-radius: 6px; cursor: pointer; font-size: 0.75rem;
 }
 .btn-remove:hover { background: #3d1114; color: #ff7b72; }
+.btn-stop {
+  background: transparent; border: 1px solid #f0b400; color: #f0b400;
+  padding: 3px 10px; border-radius: 6px; cursor: pointer; font-size: 0.75rem;
+}
+.btn-stop:hover { background: #3d2e00; color: #ffd03d; }
 .stream-transcript { padding: 0.75rem 1rem; background: #0d1117; font-family: monospace; font-size: 0.82rem; line-height: 1.5; max-height: 120px; overflow-y: auto; color: #c9d1d9; border-bottom: 1px solid #21262d; }
 .stream-signals { padding: 0.5rem 1rem; }
 .expand-link {

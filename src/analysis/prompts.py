@@ -1,21 +1,28 @@
-CANONICAL_COMMODITIES = {
-    "crude_oil_wti": "WTI Crude Oil",
-    "crude_oil_brent": "Brent Crude Oil",
-    "natural_gas": "Natural Gas",
-    "gold": "Gold",
-    "silver": "Silver",
-    "wheat": "Wheat",
-    "corn": "Corn",
-    "copper": "Copper",
-}
+from src.analysis import commodity_registry
 
-EXTRACTION_SYSTEM_PROMPT = f"""\
+
+def _commodity_list() -> str:
+    return "\n".join(
+        f"   - {c.name} ({c.display_name})"
+        for c in commodity_registry.all_commodities()
+    )
+
+
+def extraction_prompt() -> str:
+    """Build extraction prompt with current commodity registry."""
+    return EXTRACTION_SYSTEM_PROMPT_TEMPLATE.format(commodity_list=_commodity_list())
+
+
+# Legacy alias for backwards compatibility
+CANONICAL_COMMODITIES = commodity_registry.canonical_map()
+
+EXTRACTION_SYSTEM_PROMPT_TEMPLATE = """\
 You are a commodity market analyst. Given a transcript excerpt from a live stream \
 (conference, press briefing, or analyst commentary), extract structured information.
 
 Identify:
 1. **Commodities** mentioned or implied. Use these canonical names ONLY:
-{chr(10).join(f'   - {k} ({v})' for k, v in CANONICAL_COMMODITIES.items())}
+{commodity_list}
 
 2. **Key people** (ministers, central bank governors, OPEC officials, analysts) \
 with their role if identifiable.
@@ -81,6 +88,10 @@ Respond with valid JSON matching this schema:
     {{"name": "<snake_case_id>", "display_name": "<display>", "context": "<quote>"}}
   ]
 }}"""
+
+# Build once at import time (extractor holds this). Use extraction_prompt() to rebuild live.
+EXTRACTION_SYSTEM_PROMPT = extraction_prompt()
+
 
 SCORING_SYSTEM_PROMPT = """\
 You are a commodity market impact analyst. Given extracted entities and their context \

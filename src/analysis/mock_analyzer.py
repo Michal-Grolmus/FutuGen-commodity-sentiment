@@ -9,6 +9,7 @@ import logging
 import re
 import time
 
+from src.analysis import commodity_registry
 from src.models import (
     CommodityMention,
     CommoditySignal,
@@ -21,28 +22,6 @@ from src.models import (
 )
 
 logger = logging.getLogger(__name__)
-
-COMMODITY_KEYWORDS: dict[str, list[str]] = {
-    "crude_oil_wti": ["oil", "crude", "wti", "barrel", "opec", "petroleum"],
-    "crude_oil_brent": ["brent"],
-    "natural_gas": ["natural gas", "lng", "gas supply", "gas import"],
-    "gold": ["gold", "precious metal", "bullion"],
-    "silver": ["silver"],
-    "wheat": ["wheat"],
-    "corn": ["corn", "crop", "grain", "harvest"],
-    "copper": ["copper", "industrial metal", "mine"],
-}
-
-DISPLAY_NAMES: dict[str, str] = {
-    "crude_oil_wti": "WTI Crude Oil",
-    "crude_oil_brent": "Brent Crude Oil",
-    "natural_gas": "Natural Gas",
-    "gold": "Gold",
-    "silver": "Silver",
-    "wheat": "Wheat",
-    "corn": "Corn",
-    "copper": "Copper",
-}
 
 BULLISH = [
     "cut production", "production cut", "reduce supply", "supply disruption",
@@ -64,13 +43,13 @@ class MockExtractor:
         text = transcript.full_text.lower()
 
         commodities = []
-        for name, keywords in COMMODITY_KEYWORDS.items():
-            for kw in keywords:
+        for c in commodity_registry.all_commodities():
+            for kw in c.keywords:
                 if kw in text:
                     idx = text.index(kw)
                     context = transcript.full_text[max(0, idx - 20):idx + len(kw) + 20]
                     commodities.append(CommodityMention(
-                        name=name, display_name=DISPLAY_NAMES[name], context=context,
+                        name=c.name, display_name=c.display_name, context=context,
                     ))
                     break
 

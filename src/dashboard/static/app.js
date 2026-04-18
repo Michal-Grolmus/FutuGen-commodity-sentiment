@@ -6,27 +6,39 @@ let isDemoMode = false;
 const selectedStreamIds = new Set();
 const selectedCommodityIds = new Set();
 
-// Stream data: { streamId: { name, url, type, transcript, signals[] } }
+// Stream data: { streamId: { name, url, type, transcript, signals[], stopped } }
 const streams = {};
 
-// Commodity data: { commodityId: { display_name, events[] } }
-const COMMODITY_NAMES_FULL = {
-  crude_oil_wti: "WTI Crude Oil", crude_oil_brent: "Brent Crude Oil",
-  natural_gas: "Natural Gas", gold: "Gold", silver: "Silver",
-  wheat: "Wheat", corn: "Corn", copper: "Copper",
-};
-const COMMODITY_SHORT = {
-  crude_oil_wti: "WTI", crude_oil_brent: "Brent", natural_gas: "Nat Gas",
-  gold: "Gold", silver: "Silver", wheat: "Wheat", corn: "Corn", copper: "Copper",
-};
+// Commodity data: { commodityId: { display_name, short_name, events[] } }
+// Loaded from /api/commodities at init
 const commodities = {};
-for (const [id, name] of Object.entries(COMMODITY_NAMES_FULL)) {
-  commodities[id] = { display_name: name, events: [] };
-  selectedCommodityIds.add(id);  // default: all selected
+
+async function loadCommodities() {
+  const list = await fetchJSON("/api/commodities");
+  if (!Array.isArray(list)) return;
+  for (const c of list) {
+    if (!commodities[c.name]) {
+      commodities[c.name] = {
+        display_name: c.display_name,
+        short_name: c.display_name.length > 12 ? c.display_name.split(" ")[0] : c.display_name,
+        events: [],
+      };
+      selectedCommodityIds.add(c.name);  // auto-select new commodities
+    }
+  }
+  // Remove commodities that no longer exist in backend
+  const validNames = new Set(list.map(c => c.name));
+  for (const id of Object.keys(commodities)) {
+    if (!validNames.has(id)) {
+      delete commodities[id];
+      selectedCommodityIds.delete(id);
+    }
+  }
 }
 
 // ===== INIT =====
 async function init() {
+  await loadCommodities();
   const config = await fetchJSON("/api/config");
   if (!config.has_api_key && !config.input_source) {
     showOnboarding();
@@ -121,7 +133,8 @@ function saveApiKey() {
   alert("Set in .env:\nANTHROPIC_API_KEY=" + key.substring(0, 12) + "...\nThen restart the server.");
 }
 
-function startDemo() {
+async function startDemo() {
+  await loadCommodities();
   isDemoMode = true;
   showApp("streams");
   setStatus("Demo Mode", "status-demo");
@@ -204,6 +217,9 @@ function renderStreams() {
     const urlHtml = urlHref
       ? `<a class="stream-url" href="${escapeHtml(urlHref)}" target="_blank" rel="noopener">${escapeHtml(s.url)}</a>`
       : `<span class="stream-url">${escapeHtml(s.url || "")}</span>`;
+    const stopBtnLabel = s.stopped ? "Resume Transcript" : "Stop Transcript";
+    const statusLabel = s.stopped ? "stopped" : s.type;
+    const statusColor = s.stopped ? "color:#f0b400" : "";
     card.innerHTML = `
       <div class="stream-card-header">
         <div class="stream-identity">
@@ -211,14 +227,21 @@ function renderStreams() {
           ${urlHtml}
         </div>
         <div class="stream-actions">
-          <span class="stream-status">${escapeHtml(s.type)}</span>
-          <button class="btn-remove" onclick="removeStream('${escapeHtml(id)}')" title="Stop and remove this stream">Remove</button>
+          <span class="stream-status" style="${statusColor}">${escapeHtml(statusLabel)}</span>
+          <button class="btn-stop" onclick="toggleStopStream('${escapeHtml(id)}')" title="Toggle transcript processing">${stopBtnLabel}</button>
+          <button class="btn-remove" onclick="removeStream('${escapeHtml(id)}')" title="Remove this stream">Remove</button>
         </div>
       </div>
       <div class="stream-transcript" id="transcript-${escapeHtml(id)}">${escapeHtml(s.transcript) || '<span style="color:#8b949e">Waiting for transcript...</span>'}</div>
       <div class="stream-signals">${signalsHtml || '<span style="color:#8b949e;font-size:0.8rem">No signals yet</span>'}${expand}</div>`;
     container.appendChild(card);
   }
+}
+
+function toggleStopStream(id) {
+  if (!streams[id]) return;
+  streams[id].stopped = !streams[id].stopped;
+  renderStreams();
 }
 
 function toggleStreamSignals(id) {
@@ -245,9 +268,56 @@ function renderCommodityFilters() {
   let html = `<button class="filter-btn toggle-all" onclick="${toggleAction}">${toggleLabel}</button>`;
   for (const [id, c] of Object.entries(commodities)) {
     const cls = selectedCommodityIds.has(id) ? "active" : "";
-    html += `<button class="filter-btn ${cls}" onclick="toggleCommodityFilter('${id}')">${escapeHtml(COMMODITY_SHORT[id])} <span class="count">${c.events.length}</span></button>`;
+    html += `<button class="filter-btn ${cls}" onclick="toggleCommodityFilter('${id}')">${escapeHtml(c.short_name)} <span class="count">${c.events.length}</span></button>`;
   }
   panel.innerHTML = html;
+}
+
+async function removeCommodity(id) {
+  if (!commodities[id]) return;
+  if (!confirm(`Remove commodity "${commodities[id].display_name}"? Events will be cleared and new signals for this commodity will be ignored.`)) return;
+  try {
+    await fetch(`/api/commodities/${encodeURIComponent(id)}`, { method: "DELETE" });
+  } catch {}
+  delete commodities[id];
+  selectedCommodityIds.delete(id);
+  renderCommodityFilters();
+  renderLatestEvents();
+  renderCommodities();
+}
+
+function showAddCommodityDialog() {
+  const name = prompt("Commodity ID (snake_case, e.g. 'lithium'):");
+  if (!name) return;
+  const display = prompt("Display name (e.g. 'Lithium'):");
+  if (!display) return;
+  const keywords = prompt("Keywords for detection (comma-separated, e.g. 'lithium, battery metal, ev battery'):") || "";
+  const ticker = prompt("Yahoo Finance ticker (optional, e.g. 'LIT' for lithium ETF):") || "";
+  saveCommodity(name, display, keywords, ticker);
+}
+
+async function saveCommodity(name, display, keywords, ticker) {
+  const payload = {
+    name: name.trim().toLowerCase().replace(/\s+/g, "_"),
+    display_name: display.trim(),
+    keywords: keywords,
+    yahoo_ticker: ticker.trim(),
+  };
+  try {
+    const res = await fetch("/api/commodities", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    const data = await res.json();
+    if (data.error) { alert("Error: " + data.error); return; }
+    await loadCommodities();
+    renderCommodityFilters();
+    renderCommodities();
+    alert(`Added "${data.display_name}". LLM prompts and mock analyzer will now detect this commodity.`);
+  } catch (e) {
+    alert("Failed to add commodity: " + e.message);
+  }
 }
 
 function toggleCommodityFilter(id) {
@@ -335,11 +405,12 @@ function renderCommodities() {
       : "";
 
     card.innerHTML = `
-      <div class="commodity-card-header" onclick="toggleCommodity('${id}_main')">
-        <div>
+      <div class="commodity-card-header">
+        <div onclick="toggleCommodity('${id}_main')" style="flex:1;cursor:pointer">
           <span class="commodity-title">${escapeHtml(c.display_name)}</span>
           <span class="commodity-count">${total} event${total !== 1 ? "s" : ""}</span>
         </div>
+        <button class="btn-remove" onclick="removeCommodity('${id}')" title="Stop tracking this commodity">Remove</button>
       </div>
       <div class="commodity-events${total > 0 ? " open" : ""}" id="commodity-${id}_main">
         ${eventsHtml || '<div style="color:#8b949e;font-size:0.82rem;padding:0.5rem 0">No events detected yet</div>'}
@@ -393,6 +464,7 @@ function connect(endpoint) {
     if (!t) return;
     const streamId = event.stream_id || Object.keys(streams)[0];
     if (!streams[streamId]) addStream(streamId, streamId, "demo");
+    if (streams[streamId].stopped) return;  // skip transcript update if stopped
     streams[streamId].transcript = t.full_text;
     renderStreamFilters();
     if (!document.getElementById("view-streams").classList.contains("hidden")) {

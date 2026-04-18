@@ -265,6 +265,41 @@ def create_app(broadcaster: SignalBroadcaster | None = None) -> FastAPI:
         """Return curated list of commodity news streams."""
         return CURATED_STREAMS
 
+    @app.get("/api/commodities")
+    async def list_commodities() -> list[dict[str, object]]:
+        from src.analysis import commodity_registry
+        return [
+            {"name": c.name, "display_name": c.display_name,
+             "keywords": c.keywords, "yahoo_ticker": c.yahoo_ticker}
+            for c in commodity_registry.all_commodities()
+        ]
+
+    @app.post("/api/commodities")
+    async def add_commodity(payload: dict[str, object]) -> dict[str, object]:
+        from src.analysis import commodity_registry
+        name = str(payload.get("name", "")).strip().lower().replace(" ", "_")
+        display = str(payload.get("display_name", "")).strip()
+        keywords_raw = payload.get("keywords", [])
+        if isinstance(keywords_raw, str):
+            keywords = [k.strip().lower() for k in keywords_raw.split(",") if k.strip()]
+        else:
+            keywords = [str(k).strip().lower() for k in keywords_raw if str(k).strip()]
+        ticker = str(payload.get("yahoo_ticker", "")).strip()
+        if not name or not display:
+            return {"error": "name and display_name required"}
+        try:
+            c = commodity_registry.add(name, display, keywords, ticker)
+        except ValueError as e:
+            return {"error": str(e)}
+        return {"ok": True, "name": c.name, "display_name": c.display_name}
+
+    @app.delete("/api/commodities/{name}")
+    async def remove_commodity(name: str) -> dict[str, object]:
+        from src.analysis import commodity_registry
+        if commodity_registry.remove(name):
+            return {"ok": True}
+        return {"error": f"Commodity '{name}' not found"}
+
     @app.get("/api/prices/{commodity}")
     async def get_commodity_prices(commodity: str) -> dict[str, object]:
         """Get 30-day price history for a commodity (for sparkline charts)."""

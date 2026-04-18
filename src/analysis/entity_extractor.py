@@ -6,7 +6,7 @@ import time
 
 from anthropic import AsyncAnthropic
 
-from src.analysis.prompts import EXTRACTION_SYSTEM_PROMPT
+from src.analysis.prompts import extraction_prompt
 from src.models import (
     CommodityMention,
     EconomicIndicator,
@@ -33,7 +33,7 @@ class EntityExtractor:
             response = await self._client.messages.create(
                 model=self._model,
                 max_tokens=1024,
-                system=EXTRACTION_SYSTEM_PROMPT,
+                system=extraction_prompt(),
                 messages=[{"role": "user", "content": transcript.full_text}],
             )
 
