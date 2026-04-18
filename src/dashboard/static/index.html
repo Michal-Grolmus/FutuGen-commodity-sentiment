@@ -76,8 +76,19 @@
         <div class="header-actions">
           <button onclick="showAddStreamDialog()" class="btn-sm">+ Add Stream</button>
           <button onclick="showSavedStreamsModal()" class="btn-sm">Saved Streams</button>
+          <button onclick="showSettingsModal()" class="btn-sm" title="Pipeline settings (chunk duration, Whisper model, language)">⚙ Settings</button>
           <button onclick="startAllSavedStreams()" class="btn-sm btn-primary-sm">Search &amp; Start Saved</button>
         </div>
+      </div>
+
+      <!-- Pipeline stats widget -->
+      <div id="stats-widget" class="stats-widget">
+        <div class="stat-item"><span class="stat-label">STT latency</span><span class="stat-value" id="stat-stt">--</span></div>
+        <div class="stat-item"><span class="stat-label">Extract</span><span class="stat-value" id="stat-extract">--</span></div>
+        <div class="stat-item"><span class="stat-label">Score</span><span class="stat-value" id="stat-score">--</span></div>
+        <div class="stat-item"><span class="stat-label">Chunks</span><span class="stat-value" id="stat-chunks-val">0</span></div>
+        <div class="stat-item"><span class="stat-label">Signals</span><span class="stat-value" id="stat-signals-val">0</span></div>
+        <div class="stat-item"><span class="stat-label">API cost</span><span class="stat-value" id="stat-cost-val">$0.0000</span></div>
       </div>
       <div id="streams-list"></div>
       <div id="no-streams" class="empty-state">No active streams. <a href="#" onclick="showOnboarding()">Add one &rarr;</a></div>
@@ -102,6 +113,52 @@
       </section>
 
       <div id="commodities-grid"></div>
+    </div>
+  </div>
+
+  <!-- SETTINGS MODAL -->
+  <div id="settings-modal" class="modal hidden" onclick="if(event.target===this) closeSettingsModal()">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3>Pipeline Settings</h3>
+        <button class="btn-close" onclick="closeSettingsModal()">×</button>
+      </div>
+      <p class="hint">These settings apply to the next pipeline start. Changing them shows the CLI command to restart with the new config.</p>
+
+      <div class="settings-row">
+        <label for="setting-chunk">Chunk duration (seconds)</label>
+        <div class="setting-control">
+          <input id="setting-chunk" type="range" min="5" max="15" value="10" oninput="document.getElementById('setting-chunk-val').textContent = this.value + 's'" />
+          <span id="setting-chunk-val" class="setting-display">10s</span>
+        </div>
+        <p class="hint-sm">Assignment: 5–15s. Shorter = lower latency, more API calls. Longer = more context per call.</p>
+      </div>
+
+      <div class="settings-row">
+        <label for="setting-model">Whisper model</label>
+        <select id="setting-model" class="setting-select">
+          <option value="tiny">tiny (fastest, lowest accuracy)</option>
+          <option value="base">base</option>
+          <option value="small" selected>small (recommended, default)</option>
+          <option value="medium">medium</option>
+          <option value="large-v3">large-v3 (best quality, slowest)</option>
+        </select>
+      </div>
+
+      <div class="settings-row">
+        <label for="setting-lang">Transcript language</label>
+        <select id="setting-lang" class="setting-select">
+          <option value="en" selected>English (forced, default)</option>
+          <option value="">Auto-detect (multi-language: en/cs/de/es...)</option>
+          <option value="cs">Czech (bonus)</option>
+          <option value="de">German</option>
+          <option value="es">Spanish</option>
+        </select>
+      </div>
+
+      <div class="modal-row">
+        <button onclick="showRestartCommand()" class="btn-primary">Show restart command</button>
+      </div>
     </div>
   </div>
 

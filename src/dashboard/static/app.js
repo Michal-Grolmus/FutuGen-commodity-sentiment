@@ -145,6 +145,40 @@ async function startDemo() {
   connect("/api/demo");
 }
 
+// ===== SETTINGS MODAL =====
+function showSettingsModal() {
+  document.getElementById("settings-modal").classList.remove("hidden");
+  // Pre-fill with stored or default values
+  const stored = JSON.parse(localStorage.getItem("csm_settings") || "{}");
+  document.getElementById("setting-chunk").value = stored.chunk || 10;
+  document.getElementById("setting-chunk-val").textContent = (stored.chunk || 10) + "s";
+  document.getElementById("setting-model").value = stored.model || "small";
+  document.getElementById("setting-lang").value = stored.lang !== undefined ? stored.lang : "en";
+}
+
+function closeSettingsModal() {
+  document.getElementById("settings-modal").classList.add("hidden");
+}
+
+function showRestartCommand() {
+  const chunk = document.getElementById("setting-chunk").value;
+  const model = document.getElementById("setting-model").value;
+  const lang = document.getElementById("setting-lang").value;
+  localStorage.setItem("csm_settings", JSON.stringify({ chunk, model, lang }));
+
+  const langPart = lang ? ` WHISPER_LANGUAGE=${lang}` : " WHISPER_LANGUAGE=";
+  const cmd = `WHISPER_MODEL_SIZE=${model} CHUNK_DURATION_S=${chunk}${langPart} python -m src.main --mock -f audio_samples/real/opec_raw.wav`;
+
+  alert(
+    "To apply these settings, restart the server:\n\n" +
+    "Linux/Mac:\n" + cmd + "\n\n" +
+    "Windows (PowerShell):\n" +
+    `$env:WHISPER_MODEL_SIZE='${model}'; $env:CHUNK_DURATION_S=${chunk}; $env:WHISPER_LANGUAGE='${lang}'; python -m src.main --mock -f audio_samples/real/opec_raw.wav\n\n` +
+    "Or edit .env and restart."
+  );
+  closeSettingsModal();
+}
+
 // ===== SAVED STREAMS MODAL =====
 function showSavedStreamsModal() {
   document.getElementById("saved-streams-modal").classList.remove("hidden");
@@ -600,6 +634,20 @@ function connect(endpoint) {
 
   source.addEventListener("keepalive", () => {});
 }
+
+// ===== STATS POLLING =====
+async function pollStats() {
+  const stats = await fetchJSON("/api/stats");
+  if (!stats) return;
+  const set = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
+  set("stat-stt", stats.avg_stt_latency_ms ? `${Math.round(stats.avg_stt_latency_ms)}ms` : "--");
+  set("stat-extract", stats.avg_extraction_latency_ms ? `${Math.round(stats.avg_extraction_latency_ms)}ms` : "--");
+  set("stat-score", stats.avg_scoring_latency_ms ? `${Math.round(stats.avg_scoring_latency_ms)}ms` : "--");
+  set("stat-chunks-val", stats.chunks_processed || 0);
+  set("stat-signals-val", stats.total_signals || 0);
+  set("stat-cost-val", `$${(stats.total_cost_usd || 0).toFixed(4)}`);
+}
+setInterval(pollStats, 3000);
 
 // ===== START =====
 init();
