@@ -25,12 +25,9 @@
         <a href="https://console.anthropic.com/settings/keys" target="_blank" class="link">Get an API key &rarr;</a>
       </div>
       <div class="onboard-section">
-        <h3>3. Pick a live stream or sample</h3>
-        <div id="stream-picker"></div>
-        <div class="custom-url-row">
-          <input id="custom-url" type="text" placeholder="Or paste a YouTube Live URL..." />
-          <button onclick="addCustomStream()" class="btn-primary">Add</button>
-        </div>
+        <h3>3. Or go straight to the dashboard</h3>
+        <p class="hint">You can manage streams from the Streams view (Saved Streams &rarr; Add).</p>
+        <button onclick="showApp('streams')" class="btn-primary" style="width:100%">Open Dashboard</button>
       </div>
     </div>
   </div>
@@ -56,7 +53,11 @@
 
       <div class="view-header">
         <h2>Active Streams</h2>
-        <button onclick="showOnboarding()" class="btn-sm">+ Add Stream</button>
+        <div class="header-actions">
+          <button onclick="showAddStreamDialog()" class="btn-sm">+ Add Stream</button>
+          <button onclick="showSavedStreamsModal()" class="btn-sm">Saved Streams</button>
+          <button onclick="startAllSavedStreams()" class="btn-sm btn-primary-sm">Search &amp; Start Saved</button>
+        </div>
       </div>
       <div id="streams-list"></div>
       <div id="no-streams" class="empty-state">No active streams. <a href="#" onclick="showOnboarding()">Add one &rarr;</a></div>
@@ -81,6 +82,25 @@
       </section>
 
       <div id="commodities-grid"></div>
+    </div>
+  </div>
+
+  <!-- SAVED STREAMS MODAL -->
+  <div id="saved-streams-modal" class="modal hidden" onclick="if(event.target===this) closeSavedStreamsModal()">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3>Saved Streams</h3>
+        <button class="btn-close" onclick="closeSavedStreamsModal()">×</button>
+      </div>
+      <p class="hint">Saved URLs are stored in your browser. Channel URLs (e.g. <code>youtube.com/@Bloomberg/live</code>) work best — they always point to the current live broadcast.</p>
+      <div id="saved-streams-list"></div>
+      <div class="modal-row">
+        <input id="new-saved-name" type="text" placeholder="Name (e.g. Bloomberg Live)" />
+      </div>
+      <div class="modal-row">
+        <input id="new-saved-url" type="text" placeholder="YouTube URL or channel/live URL" />
+        <button onclick="addSavedStream()" class="btn-primary">Save</button>
+      </div>
     </div>
   </div>
 

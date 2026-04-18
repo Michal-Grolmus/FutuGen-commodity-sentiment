@@ -9,6 +9,34 @@ const selectedCommodityIds = new Set();
 // Stream data: { streamId: { name, url, type, transcript, signals[], stopped } }
 const streams = {};
 
+// Default saved streams (loaded on first visit, then user edits persist in localStorage)
+const DEFAULT_SAVED_STREAMS = [
+  { name: "Bloomberg Business News", url: "https://www.youtube.com/watch?v=iEpJwprxDdk" },
+  { name: "Bloomberg Originals", url: "https://www.youtube.com/watch?v=DxmDPrfinXY" },
+  { name: "Yahoo Finance 24/7", url: "https://www.youtube.com/watch?v=KQp-e_XQnDE" },
+  { name: "CNBC Marathon", url: "https://www.youtube.com/watch?v=9NyxcX3rhQs" },
+  { name: "Bloomberg TV (channel)", url: "https://www.youtube.com/@markets/live" },
+  { name: "CNBC (channel)", url: "https://www.youtube.com/@CNBC/live" },
+  { name: "Reuters (channel)", url: "https://www.youtube.com/@Reuters/live" },
+  { name: "Kitco News (channel)", url: "https://www.youtube.com/@KitcoNEWS/live" },
+  { name: "Sample: OPEC analysis (file)", url: "audio_samples/real/opec_raw.wav" },
+  { name: "Sample: Fed & Gold (file)", url: "audio_samples/real/fed_raw.wav" },
+];
+
+function loadSavedStreams() {
+  try {
+    const stored = localStorage.getItem("csm_saved_streams");
+    if (stored) return JSON.parse(stored);
+  } catch {}
+  return [...DEFAULT_SAVED_STREAMS];
+}
+
+function persistSavedStreams(list) {
+  try { localStorage.setItem("csm_saved_streams", JSON.stringify(list)); } catch {}
+}
+
+let savedStreams = loadSavedStreams();
+
 // Commodity data: { commodityId: { display_name, short_name, events[] } }
 // Loaded from /api/commodities at init
 const commodities = {};
@@ -70,7 +98,6 @@ function showOnboarding() {
   if (activeSSE) { activeSSE.close(); activeSSE = null; }
   document.getElementById("onboarding").classList.remove("hidden");
   document.getElementById("app").classList.add("hidden");
-  loadStreamPicker();
 }
 
 function showApp(view) {
@@ -97,36 +124,6 @@ function showView(view) {
 }
 
 // ===== ONBOARDING =====
-async function loadStreamPicker() {
-  const list = await fetchJSON("/api/streams");
-  const picker = document.getElementById("stream-picker");
-  if (!picker) return;
-  picker.innerHTML = "";
-  for (const s of list) {
-    const div = document.createElement("div");
-    div.className = "stream-option";
-    div.innerHTML = `<span class="name">${escapeHtml(s.name)}</span><span class="type-badge ${s.type}">${s.type}</span><div class="desc">${escapeHtml(s.description)}</div>`;
-    div.onclick = () => {
-      addStream(s.name, s.url, s.type);
-      showApp("streams");
-      if (s.type === "file") {
-        alert(`To analyze this file, restart with:\npython -m src.main --mock -f ${s.url}`);
-      } else if (s.type === "live") {
-        alert(`To analyze this live stream, restart with:\npython -m src.main --mock -s "${s.url}"`);
-      }
-    };
-    picker.appendChild(div);
-  }
-}
-
-function addCustomStream() {
-  const url = document.getElementById("custom-url").value.trim();
-  if (!url) return;
-  addStream(url, url, "custom");
-  showApp("streams");
-  alert(`To analyze this stream, restart with:\npython -m src.main --mock -s "${url}"`);
-}
-
 function saveApiKey() {
   const key = document.getElementById("api-key-input").value.trim();
   if (!key) return;
@@ -139,6 +136,98 @@ async function startDemo() {
   showApp("streams");
   setStatus("Demo Mode", "status-demo");
   connect("/api/demo");
+}
+
+// ===== SAVED STREAMS MODAL =====
+function showSavedStreamsModal() {
+  document.getElementById("saved-streams-modal").classList.remove("hidden");
+  renderSavedStreams();
+}
+
+function closeSavedStreamsModal() {
+  document.getElementById("saved-streams-modal").classList.add("hidden");
+}
+
+function renderSavedStreams() {
+  const list = document.getElementById("saved-streams-list");
+  if (!list) return;
+  if (savedStreams.length === 0) {
+    list.innerHTML = '<div style="color:#8b949e;padding:0.75rem 0;font-size:0.85rem">No saved streams. Add one below.</div>';
+    return;
+  }
+  list.innerHTML = "";
+  for (let i = 0; i < savedStreams.length; i++) {
+    const s = savedStreams[i];
+    const isActive = Object.values(streams).some(a => a.url === s.url);
+    const item = document.createElement("div");
+    item.className = "saved-stream-item";
+    item.innerHTML = `
+      <span class="saved-badge ${isActive ? "active" : "inactive"}">${isActive ? "active" : "inactive"}</span>
+      <div style="flex:1;min-width:0">
+        <div class="saved-name">${escapeHtml(s.name)}</div>
+        <div class="saved-url">${escapeHtml(s.url)}</div>
+      </div>
+      <button class="btn-sm" onclick="addFromSaved(${i})" ${isActive ? "disabled" : ""}>Start</button>
+      <button class="btn-remove" onclick="deleteSavedStream(${i})">Remove</button>`;
+    list.appendChild(item);
+  }
+}
+
+function addSavedStream() {
+  const name = document.getElementById("new-saved-name").value.trim();
+  const url = document.getElementById("new-saved-url").value.trim();
+  if (!name || !url) return alert("Name and URL are required.");
+  savedStreams.push({ name, url });
+  persistSavedStreams(savedStreams);
+  document.getElementById("new-saved-name").value = "";
+  document.getElementById("new-saved-url").value = "";
+  renderSavedStreams();
+}
+
+function deleteSavedStream(index) {
+  if (!confirm(`Remove "${savedStreams[index].name}" from saved streams?`)) return;
+  savedStreams.splice(index, 1);
+  persistSavedStreams(savedStreams);
+  renderSavedStreams();
+}
+
+function addFromSaved(index) {
+  const s = savedStreams[index];
+  const type = s.url.startsWith("http") ? "live" : "file";
+  addStream(s.name, s.url, type);
+  renderSavedStreams();
+  renderStreamFilters();
+  renderStreams();
+}
+
+function startAllSavedStreams() {
+  let added = 0;
+  for (const s of savedStreams) {
+    const already = Object.values(streams).some(a => a.url === s.url);
+    if (!already) {
+      const type = s.url.startsWith("http") ? "live" : "file";
+      addStream(s.name, s.url, type);
+      added++;
+    }
+  }
+  renderStreamFilters();
+  renderStreams();
+  if (added === 0) {
+    alert("All saved streams are already active.");
+  } else {
+    alert(`Added ${added} stream${added !== 1 ? "s" : ""}. To actually transcribe, restart server with one of them as --stream-url or --input-file.`);
+  }
+}
+
+function showAddStreamDialog() {
+  const url = prompt("Stream URL (YouTube live, HLS, RTMP, or local file path):");
+  if (!url) return;
+  const name = prompt("Display name:", url.substring(0, 50));
+  if (!name) return;
+  const type = url.startsWith("http") || url.startsWith("rtmp") ? "live" : "file";
+  addStream(name, url, type);
+  renderStreamFilters();
+  renderStreams();
 }
 
 // ===== STREAM MANAGEMENT =====
@@ -217,7 +306,7 @@ function renderStreams() {
     const urlHtml = urlHref
       ? `<a class="stream-url" href="${escapeHtml(urlHref)}" target="_blank" rel="noopener">${escapeHtml(s.url)}</a>`
       : `<span class="stream-url">${escapeHtml(s.url || "")}</span>`;
-    const stopBtnLabel = s.stopped ? "Resume Transcript" : "Stop Transcript";
+    const stopBtnLabel = s.stopped ? "Start Transcription" : "Pause Transcription";
     const statusLabel = s.stopped ? "stopped" : s.type;
     const statusColor = s.stopped ? "color:#f0b400" : "";
     card.innerHTML = `
