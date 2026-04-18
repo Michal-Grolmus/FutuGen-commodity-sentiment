@@ -137,3 +137,24 @@ def mock_anthropic_client(mock_extraction_response: dict, mock_scoring_response:
 
     client.messages.create = mock_create
     return client
+
+
+@pytest.fixture
+def mock_openai_client(mock_extraction_response: dict, mock_scoring_response: dict) -> AsyncMock:
+    """Mock OpenAI AsyncClient shaped like chat.completions.create(...)."""
+    client = AsyncMock()
+    call_count = {"n": 0}
+
+    async def mock_create(**kwargs):
+        call_count["n"] += 1
+        resp = MagicMock()
+        resp.usage.prompt_tokens = 100
+        resp.usage.completion_tokens = 150
+        payload = mock_extraction_response if call_count["n"] % 2 == 1 else mock_scoring_response
+        choice = MagicMock()
+        choice.message.content = json.dumps(payload)
+        resp.choices = [choice]
+        return resp
+
+    client.chat.completions.create = mock_create
+    return client

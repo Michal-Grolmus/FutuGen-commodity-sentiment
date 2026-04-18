@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from anthropic import AsyncAnthropic
+from openai import AsyncOpenAI
 
 from src.analysis.entity_extractor import EntityExtractor
 from src.analysis.impact_scorer import ImpactScorer
@@ -90,14 +91,10 @@ class Pipeline:
             self._extractor = MockExtractor()  # type: ignore[assignment]
             self._scorer = MockScorer()  # type: ignore[assignment]
             logger.info("Using mock analyzer (keyword-based, zero API cost).")
-        elif self._settings.anthropic_api_key:
-            client = AsyncAnthropic(api_key=self._settings.anthropic_api_key)
-            self._extractor = EntityExtractor(client, self._settings.anthropic_model_extraction)
-            self._scorer = ImpactScorer(
-                client, self._settings.anthropic_model_scoring, price_client=self._price_client,
-            )
+        elif self._build_analysis_layer():
+            logger.info("Analysis layer active (provider=%s).", self._settings.llm_provider)
         else:
-            logger.warning("No ANTHROPIC_API_KEY — analysis layer disabled, transcription only.")
+            logger.warning("No LLM API key — analysis layer disabled, transcription only.")
 
         # Bonus: Slack notifications
         if self._settings.slack_webhook_url:
@@ -275,24 +272,61 @@ class Pipeline:
     def stop(self) -> None:
         self._running = False
 
-    def set_api_key(self, api_key: str) -> bool:
-        """Live-reload Anthropic API key.
+    def _build_analysis_layer(self) -> bool:
+        """Instantiate extractor + scorer using the configured provider.
+
+        Returns True if a client was built (key present), False otherwise.
+        """
+        provider = (self._settings.llm_provider or "anthropic").strip().lower()
+        if provider == "openai":
+            key = self._settings.openai_api_key
+            if not key:
+                return False
+            client: AsyncAnthropic | AsyncOpenAI = AsyncOpenAI(api_key=key)
+            self._extractor = EntityExtractor(
+                client, self._settings.openai_model_extraction, provider="openai",
+            )
+            self._scorer = ImpactScorer(
+                client, self._settings.openai_model_scoring,
+                price_client=self._price_client, provider="openai",
+            )
+            return True
+
+        # Default: Anthropic
+        key = self._settings.anthropic_api_key
+        if not key:
+            return False
+        client = AsyncAnthropic(api_key=key)
+        self._extractor = EntityExtractor(
+            client, self._settings.anthropic_model_extraction, provider="anthropic",
+        )
+        self._scorer = ImpactScorer(
+            client, self._settings.anthropic_model_scoring,
+            price_client=self._price_client, provider="anthropic",
+        )
+        return True
+
+    def set_api_key(self, api_key: str, provider: str | None = None) -> bool:
+        """Live-reload the LLM API key (and optionally switch provider).
 
         Rebuilds extractor and scorer with a new client. Existing in-flight
         calls keep the old client (safe). Next iteration uses the new one.
         Returns True if analysis layer is now active, False if key was empty.
         """
         api_key = (api_key or "").strip()
-        self._settings.anthropic_api_key = api_key
+        if provider:
+            self._settings.llm_provider = provider.strip().lower()
+        active_provider = self._settings.llm_provider
+        if active_provider == "openai":
+            self._settings.openai_api_key = api_key
+        else:
+            self._settings.anthropic_api_key = api_key
         if not api_key:
             self._extractor = None
             self._scorer = None
-            logger.info("API key cleared — analysis layer disabled.")
+            logger.info("API key cleared for provider=%s — analysis layer disabled.", active_provider)
             return False
-        client = AsyncAnthropic(api_key=api_key)
-        self._extractor = EntityExtractor(client, self._settings.anthropic_model_extraction)
-        self._scorer = ImpactScorer(
-            client, self._settings.anthropic_model_scoring, price_client=self._price_client,
-        )
-        logger.info("API key updated — analysis layer active with new client.")
-        return True
+        built = self._build_analysis_layer()
+        if built:
+            logger.info("API key updated — analysis layer active (provider=%s).", active_provider)
+        return built

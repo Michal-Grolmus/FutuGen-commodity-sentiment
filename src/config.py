@@ -2,12 +2,20 @@ from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
+    # LLM provider selection: "anthropic" or "openai"
+    llm_provider: str = "anthropic"
+
     # Anthropic
     anthropic_api_key: str = ""
     anthropic_base_url: str = ""  # empty = default
     use_mock_analyzer: bool = False  # --mock flag: keyword-based, zero API cost
     anthropic_model_extraction: str = "claude-haiku-4-5-20251001"
     anthropic_model_scoring: str = "claude-haiku-4-5-20251001"
+
+    # OpenAI (alternative provider)
+    openai_api_key: str = ""
+    openai_model_extraction: str = "gpt-4o-mini"
+    openai_model_scoring: str = "gpt-4o-mini"
 
     # Whisper
     whisper_model_size: str = "small"  # small = best quality/speed tradeoff on CPU

@@ -241,15 +241,25 @@ def create_app(broadcaster: SignalBroadcaster | None = None) -> FastAPI:
     @app.get("/api/config")
     async def get_config() -> dict[str, object]:
         """Return current configuration state for onboarding UI."""
-        env_key = bool(os.environ.get("ANTHROPIC_API_KEY", ""))
-        runtime_key = False
+        env_anthropic = bool(os.environ.get("ANTHROPIC_API_KEY", ""))
+        env_openai = bool(os.environ.get("OPENAI_API_KEY", ""))
+        runtime_anthropic = False
+        runtime_openai = False
+        provider = "anthropic"
         if _pipeline_ref is not None:
-            runtime_key = bool(getattr(_pipeline_ref, "_settings", None)
-                               and getattr(_pipeline_ref._settings, "anthropic_api_key", ""))  # type: ignore[union-attr]
+            settings = getattr(_pipeline_ref, "_settings", None)
+            if settings is not None:
+                runtime_anthropic = bool(getattr(settings, "anthropic_api_key", ""))
+                runtime_openai = bool(getattr(settings, "openai_api_key", ""))
+                provider = getattr(settings, "llm_provider", "anthropic") or "anthropic"
         mock = os.environ.get("USE_MOCK_ANALYZER", "").lower() == "true"
+        has_key = env_anthropic or env_openai or runtime_anthropic or runtime_openai or mock
         return {
-            "has_api_key": env_key or runtime_key or mock,
+            "has_api_key": has_key,
             "mock_mode": mock,
+            "llm_provider": provider,
+            "anthropic_active": env_anthropic or runtime_anthropic,
+            "openai_active": env_openai or runtime_openai,
             "whisper_model": os.environ.get("WHISPER_MODEL_SIZE", "small"),
             "price_tracking": os.environ.get("ENABLE_PRICE_TRACKING", "true"),
             "input_source": os.environ.get("INPUT_FILE", "") or os.environ.get("STREAM_URL", ""),
@@ -257,14 +267,20 @@ def create_app(broadcaster: SignalBroadcaster | None = None) -> FastAPI:
 
     @app.post("/api/settings/api-key")
     async def set_api_key(payload: dict[str, object]) -> dict[str, object]:
-        """Live-update the Anthropic API key without restarting the pipeline."""
+        """Live-update the LLM API key (optionally switching provider)."""
         key = str(payload.get("api_key", "")).strip()
+        provider_raw = payload.get("provider")
+        provider = str(provider_raw).strip().lower() if provider_raw else None
+        if provider and provider not in ("anthropic", "openai"):
+            return {"error": f"Unknown provider '{provider}'. Use 'anthropic' or 'openai'."}
         if _pipeline_ref is None:
             return {"error": "Pipeline not available (dashboard-only mode)."}
         if not hasattr(_pipeline_ref, "set_api_key"):
             return {"error": "Pipeline doesn't support live key updates."}
-        active = _pipeline_ref.set_api_key(key)  # type: ignore[attr-defined]
-        return {"ok": True, "active": active}
+        active = _pipeline_ref.set_api_key(key, provider)
+        settings = getattr(_pipeline_ref, "_settings", None)
+        active_provider = getattr(settings, "llm_provider", "anthropic") if settings else "anthropic"
+        return {"ok": True, "active": active, "provider": active_provider}
 
     @app.get("/api/events")
     async def event_stream(request: Request) -> EventSourceResponse:

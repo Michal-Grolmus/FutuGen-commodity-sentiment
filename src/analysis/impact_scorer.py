@@ -3,9 +3,9 @@ from __future__ import annotations
 import json
 import logging
 import time
+from typing import Any
 
-from anthropic import AsyncAnthropic
-
+from src.analysis.llm import complete
 from src.analysis.prompts import SCORING_SYSTEM_PROMPT
 from src.models import CommoditySignal, Direction, ExtractionResult, ScoringResult, Timeframe
 from src.prices.yahoo_client import COMMODITY_TICKERS, PriceClient
@@ -16,13 +16,15 @@ logger = logging.getLogger(__name__)
 class ImpactScorer:
     def __init__(
         self,
-        client: AsyncAnthropic,
+        client: Any,
         model: str = "claude-haiku-4-5-20251001",
         price_client: PriceClient | None = None,
+        provider: str = "anthropic",
     ) -> None:
         self._client = client
         self._model = model
         self._price_client = price_client
+        self._provider = provider
 
     async def score(self, extraction: ExtractionResult) -> ScoringResult:
         if not extraction.commodities:
@@ -56,16 +58,16 @@ class ImpactScorer:
         user_message = "\n\n".join(context_parts)
 
         try:
-            response = await self._client.messages.create(
+            response = await complete(
+                self._client,
+                self._provider,
                 model=self._model,
-                max_tokens=1024,
                 system=SCORING_SYSTEM_PROMPT,
-                messages=[{"role": "user", "content": user_message}],
+                user=user_message,
+                max_tokens=1024,
             )
 
-            block = response.content[0]
-            raw = block.text if hasattr(block, "text") else ""
-            data = json.loads(raw)
+            data = json.loads(response.text)
             elapsed = time.perf_counter() - t0
 
             signals = []
@@ -88,8 +90,8 @@ class ImpactScorer:
                 chunk_id=extraction.chunk_id,
                 signals=signals,
                 model_used=self._model,
-                input_tokens=response.usage.input_tokens,
-                output_tokens=response.usage.output_tokens,
+                input_tokens=response.input_tokens,
+                output_tokens=response.output_tokens,
                 processing_time_s=elapsed,
             )
 

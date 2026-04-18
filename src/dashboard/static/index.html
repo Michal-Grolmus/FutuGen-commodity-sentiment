@@ -19,30 +19,26 @@
       <div class="onboard-section">
         <h3>2. Or connect your API key</h3>
         <div class="key-input-row">
-          <input id="api-key-input" type="password" placeholder="sk-ant-... or gsk-... or AIza..." />
+          <select id="api-provider-select" onchange="onOnboardingProviderChange()">
+            <option value="anthropic">Anthropic</option>
+            <option value="openai">OpenAI</option>
+          </select>
+          <input id="api-key-input" type="password" placeholder="sk-ant-..." />
           <button onclick="saveApiKey()" class="btn-primary">Save</button>
         </div>
 
-        <p class="hint" style="margin-top:0.75rem">Free API options (no credit card needed):</p>
+        <p class="hint" style="margin-top:0.75rem">Supported providers (built-in):</p>
         <div class="provider-grid">
-          <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener" class="provider-card">
-            <div class="provider-name">Google Gemini <span class="provider-tag best">most generous</span></div>
-            <div class="provider-limits">1,500 req/day · Gemini 2.5 Flash</div>
-          </a>
-          <a href="https://console.groq.com/keys" target="_blank" rel="noopener" class="provider-card">
-            <div class="provider-name">Groq <span class="provider-tag fast">fastest</span></div>
-            <div class="provider-limits">1,000 req/day · 300+ tok/s · Llama 3.3 70B</div>
-          </a>
-          <a href="https://console.mistral.ai/api-keys" target="_blank" rel="noopener" class="provider-card">
-            <div class="provider-name">Mistral La Plateforme</div>
-            <div class="provider-limits">~86k req/day · 500k tok/min · Mistral Small</div>
-          </a>
           <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener" class="provider-card">
             <div class="provider-name">Anthropic Claude <span class="provider-tag quality">best quality</span></div>
-            <div class="provider-limits">$5 free credit · Haiku 4.5 recommended for this app</div>
+            <div class="provider-limits">$5 free credit &middot; Haiku 4.5 recommended</div>
+          </a>
+          <a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener" class="provider-card">
+            <div class="provider-name">OpenAI GPT</div>
+            <div class="provider-limits">Pay-as-you-go &middot; gpt-4o-mini recommended</div>
           </a>
         </div>
-        <p class="hint" style="font-size:0.72rem;margin-top:0.5rem">The app uses Anthropic SDK by default. For other providers, see <code>docs/TESTING_GUIDE.md</code>.</p>
+        <p class="hint" style="font-size:0.72rem;margin-top:0.5rem">Pick a provider above, then paste its key. The key is pushed live to the pipeline (no restart needed).</p>
       </div>
       <div class="onboard-section">
         <h3>3. Or go straight to the dashboard</h3>
@@ -119,20 +115,27 @@
       </div>
 
       <section class="settings-card">
-        <h3 class="section-title">Anthropic API Key</h3>
-        <p class="hint">Stored in your browser's localStorage. To activate it in the pipeline, restart the server with the provided command.</p>
+        <h3 class="section-title">LLM Provider</h3>
+        <p class="hint">Choose which provider handles extraction and scoring. Keys are stored in your browser's localStorage and pushed live to the pipeline (no restart needed).</p>
+        <div class="modal-row">
+          <label for="settings-provider" style="min-width:auto;align-self:center">Provider:</label>
+          <select id="settings-provider" onchange="onProviderChange()">
+            <option value="anthropic">Anthropic (Claude)</option>
+            <option value="openai">OpenAI (GPT)</option>
+          </select>
+        </div>
         <div id="api-key-status"></div>
         <div class="modal-row">
-          <input id="settings-api-key" type="password" placeholder="sk-ant-..." />
+          <input id="settings-api-key" type="password" placeholder="sk-ant-... or sk-..." />
           <button onclick="saveSettingsApiKey()" class="btn-primary">Save</button>
           <button onclick="removeSettingsApiKey()" class="btn-remove">Remove</button>
         </div>
-        <a href="https://console.anthropic.com/settings/keys" target="_blank" class="link">Get an Anthropic API key &rarr;</a>
+        <a id="settings-provider-link" href="https://console.anthropic.com/settings/keys" target="_blank" class="link">Get an Anthropic API key &rarr;</a>
       </section>
 
       <section class="settings-card">
-        <h3 class="section-title">Other Providers</h3>
-        <p class="hint">The project uses the Anthropic SDK by default. Other providers (Groq, Gemini, Mistral) can be used by setting <code>ANTHROPIC_BASE_URL</code> in <code>.env</code> for OpenAI-compatible endpoints, or by writing a small adapter.</p>
+        <h3 class="section-title">Notes</h3>
+        <p class="hint">Default models: <code>claude-haiku-4-5</code> (Anthropic) and <code>gpt-4o-mini</code> (OpenAI) — both are fast and inexpensive. Change them via <code>ANTHROPIC_MODEL_*</code> / <code>OPENAI_MODEL_*</code> env vars in <code>.env</code>.</p>
       </section>
     </div>
 

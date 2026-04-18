@@ -136,10 +136,39 @@ function showView(view) {
 }
 
 // ===== ONBOARDING =====
-function saveApiKey() {
+function onOnboardingProviderChange() {
+  const sel = document.getElementById("api-provider-select");
+  const input = document.getElementById("api-key-input");
+  if (!sel || !input) return;
+  input.placeholder = sel.value === "openai" ? "sk-..." : "sk-ant-...";
+}
+
+async function saveApiKey() {
   const key = document.getElementById("api-key-input").value.trim();
   if (!key) return;
-  alert("Set in .env:\nANTHROPIC_API_KEY=" + key.substring(0, 12) + "...\nThen restart the server.");
+  const sel = document.getElementById("api-provider-select");
+  const provider = sel ? sel.value : "anthropic";
+  const meta = PROVIDER_META[provider] || PROVIDER_META.anthropic;
+  localStorage.setItem("csm_llm_provider", provider);
+  localStorage.setItem(meta.storageKey, key);
+
+  try {
+    const res = await fetch("/api/settings/api-key", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ api_key: key, provider }),
+    });
+    const data = await res.json();
+    if (data.ok && data.active) {
+      await loadCommodities();
+      showApp("streams");
+      setStatus("Ready", "status-ok");
+    } else if (data.error) {
+      alert(`Key saved locally. Pipeline not reachable: ${data.error}\nRestart with ${meta.envVar}=<key>`);
+    }
+  } catch (e) {
+    alert("Failed to activate key: " + e.message);
+  }
 }
 
 async function startDemo() {
@@ -184,43 +213,92 @@ function showRestartCommand() {
   closeSettingsModal();
 }
 
-// ===== SETTINGS VIEW (API key management) =====
+// ===== SETTINGS VIEW (API key management, provider-aware) =====
+// localStorage keys:
+//   csm_llm_provider     — "anthropic" | "openai"
+//   csm_api_key          — Anthropic key (legacy name, kept for backward compat)
+//   csm_openai_api_key   — OpenAI key
+const PROVIDER_META = {
+  anthropic: {
+    label: "Anthropic (Claude)",
+    placeholder: "sk-ant-...",
+    storageKey: "csm_api_key",
+    consoleUrl: "https://console.anthropic.com/settings/keys",
+    linkText: "Get an Anthropic API key \u2192",
+    envVar: "ANTHROPIC_API_KEY",
+  },
+  openai: {
+    label: "OpenAI (GPT)",
+    placeholder: "sk-...",
+    storageKey: "csm_openai_api_key",
+    consoleUrl: "https://platform.openai.com/api-keys",
+    linkText: "Get an OpenAI API key \u2192",
+    envVar: "OPENAI_API_KEY",
+  },
+};
+
+function getCurrentProvider() {
+  const stored = localStorage.getItem("csm_llm_provider");
+  return stored === "openai" ? "openai" : "anthropic";
+}
+
 function renderSettingsView() {
-  const key = localStorage.getItem("csm_api_key") || "";
-  const status = document.getElementById("api-key-status");
+  const provider = getCurrentProvider();
+  const meta = PROVIDER_META[provider];
+  const select = document.getElementById("settings-provider");
   const input = document.getElementById("settings-api-key");
+  const status = document.getElementById("api-key-status");
+  const link = document.getElementById("settings-provider-link");
+
+  if (select) select.value = provider;
+  if (input) input.placeholder = meta.placeholder;
+  if (link) {
+    link.href = meta.consoleUrl;
+    link.textContent = meta.linkText;
+  }
+
+  const key = localStorage.getItem(meta.storageKey) || "";
   if (key) {
     status.className = "has-key";
-    status.textContent = `✓ API key saved (${key.substring(0, 10)}...${key.slice(-4)}). Restart server with: ANTHROPIC_API_KEY=<key> python -m src.main`;
+    status.textContent = `\u2713 ${meta.label} key saved (${key.substring(0, 8)}...${key.slice(-4)}). Active in the running pipeline.`;
     input.value = key;
   } else {
     status.className = "no-key";
-    status.textContent = "No API key saved. Without it, signals require --mock mode.";
+    status.textContent = `No ${meta.label} key saved. Without it, signals require --mock mode.`;
     input.value = "";
   }
 }
 
+function onProviderChange() {
+  const select = document.getElementById("settings-provider");
+  if (!select) return;
+  localStorage.setItem("csm_llm_provider", select.value);
+  renderSettingsView();
+}
+
 async function saveSettingsApiKey() {
+  const provider = getCurrentProvider();
+  const meta = PROVIDER_META[provider];
   const key = document.getElementById("settings-api-key").value.trim();
   if (!key) return alert("Enter an API key first.");
-  localStorage.setItem("csm_api_key", key);
+  localStorage.setItem(meta.storageKey, key);
+  localStorage.setItem("csm_llm_provider", provider);
 
   // Live-update the running pipeline
   try {
     const res = await fetch("/api/settings/api-key", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ api_key: key }),
+      body: JSON.stringify({ api_key: key, provider }),
     });
     const data = await res.json();
     const status = document.getElementById("api-key-status");
     if (data.ok && data.active) {
       status.className = "has-key";
-      status.textContent = `✓ API key saved and activated in the running pipeline. Next transcribed chunks will be analyzed with this key.`;
+      status.textContent = `\u2713 ${meta.label} key saved and activated. Next transcribed chunks will use ${meta.label}.`;
     } else if (data.error) {
-      // Pipeline not running (dashboard-only mode) — fall back to restart instructions
       status.className = "no-key";
-      status.innerHTML = `⚠ ${escapeHtml(data.error)} Key saved locally. To use it, restart the pipeline with <code>ANTHROPIC_API_KEY=${escapeHtml(key.substring(0, 10))}...</code>`;
+      status.innerHTML = `\u26a0 ${escapeHtml(data.error)} Key saved locally. To use it, restart the pipeline with <code>${meta.envVar}=${escapeHtml(key.substring(0, 10))}...</code>`;
     }
   } catch (e) {
     alert("Failed to update runtime: " + e.message);
@@ -228,13 +306,15 @@ async function saveSettingsApiKey() {
 }
 
 async function removeSettingsApiKey() {
-  if (!confirm("Remove API key from browser and deactivate in pipeline?")) return;
-  localStorage.removeItem("csm_api_key");
+  const provider = getCurrentProvider();
+  const meta = PROVIDER_META[provider];
+  if (!confirm(`Remove ${meta.label} key from browser and deactivate in pipeline?`)) return;
+  localStorage.removeItem(meta.storageKey);
   try {
     await fetch("/api/settings/api-key", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ api_key: "" }),
+      body: JSON.stringify({ api_key: "", provider }),
     });
   } catch {}
   renderSettingsView();
