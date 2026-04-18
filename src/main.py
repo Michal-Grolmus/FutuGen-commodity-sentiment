@@ -85,6 +85,8 @@ async def main() -> None:
     if has_source:
         # Full mode: pipeline + dashboard
         pipeline = Pipeline(settings, broadcaster)
+        from src.dashboard.server import set_pipeline
+        set_pipeline(pipeline)
         logger.info("Dashboard: http://%s:%d", settings.dashboard_host, settings.dashboard_port)
         logger.info("Starting pipeline with source: %s", settings.input_file or settings.stream_url)
         await asyncio.gather(pipeline.run(), server.serve())

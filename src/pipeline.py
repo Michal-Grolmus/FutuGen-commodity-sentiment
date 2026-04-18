@@ -253,3 +253,25 @@ class Pipeline:
 
     def stop(self) -> None:
         self._running = False
+
+    def set_api_key(self, api_key: str) -> bool:
+        """Live-reload Anthropic API key.
+
+        Rebuilds extractor and scorer with a new client. Existing in-flight
+        calls keep the old client (safe). Next iteration uses the new one.
+        Returns True if analysis layer is now active, False if key was empty.
+        """
+        api_key = (api_key or "").strip()
+        self._settings.anthropic_api_key = api_key
+        if not api_key:
+            self._extractor = None
+            self._scorer = None
+            logger.info("API key cleared — analysis layer disabled.")
+            return False
+        client = AsyncAnthropic(api_key=api_key)
+        self._extractor = EntityExtractor(client, self._settings.anthropic_model_extraction)
+        self._scorer = ImpactScorer(
+            client, self._settings.anthropic_model_scoring, price_client=self._price_client,
+        )
+        logger.info("API key updated — analysis layer active with new client.")
+        return True

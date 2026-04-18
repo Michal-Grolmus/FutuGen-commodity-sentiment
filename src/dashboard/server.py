@@ -203,6 +203,13 @@ class SignalBroadcaster:
 
 
 _broadcaster: SignalBroadcaster | None = None
+_pipeline_ref: object | None = None  # weak reference to running Pipeline; set by create_app
+
+
+def set_pipeline(pipeline: object) -> None:
+    """Inject pipeline instance so API endpoints can update it at runtime."""
+    global _pipeline_ref  # noqa: PLW0603
+    _pipeline_ref = pipeline
 
 
 def create_app(broadcaster: SignalBroadcaster | None = None) -> FastAPI:
@@ -234,15 +241,30 @@ def create_app(broadcaster: SignalBroadcaster | None = None) -> FastAPI:
     @app.get("/api/config")
     async def get_config() -> dict[str, object]:
         """Return current configuration state for onboarding UI."""
-        has_key = bool(os.environ.get("ANTHROPIC_API_KEY", ""))
+        env_key = bool(os.environ.get("ANTHROPIC_API_KEY", ""))
+        runtime_key = False
+        if _pipeline_ref is not None:
+            runtime_key = bool(getattr(_pipeline_ref, "_settings", None)
+                               and getattr(_pipeline_ref._settings, "anthropic_api_key", ""))  # type: ignore[union-attr]
         mock = os.environ.get("USE_MOCK_ANALYZER", "").lower() == "true"
         return {
-            "has_api_key": has_key or mock,
+            "has_api_key": env_key or runtime_key or mock,
             "mock_mode": mock,
             "whisper_model": os.environ.get("WHISPER_MODEL_SIZE", "small"),
             "price_tracking": os.environ.get("ENABLE_PRICE_TRACKING", "true"),
             "input_source": os.environ.get("INPUT_FILE", "") or os.environ.get("STREAM_URL", ""),
         }
+
+    @app.post("/api/settings/api-key")
+    async def set_api_key(payload: dict[str, object]) -> dict[str, object]:
+        """Live-update the Anthropic API key without restarting the pipeline."""
+        key = str(payload.get("api_key", "")).strip()
+        if _pipeline_ref is None:
+            return {"error": "Pipeline not available (dashboard-only mode)."}
+        if not hasattr(_pipeline_ref, "set_api_key"):
+            return {"error": "Pipeline doesn't support live key updates."}
+        active = _pipeline_ref.set_api_key(key)  # type: ignore[attr-defined]
+        return {"ok": True, "active": active}
 
     @app.get("/api/events")
     async def event_stream(request: Request) -> EventSourceResponse:

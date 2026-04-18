@@ -200,24 +200,43 @@ function renderSettingsView() {
   }
 }
 
-function saveSettingsApiKey() {
+async function saveSettingsApiKey() {
   const key = document.getElementById("settings-api-key").value.trim();
   if (!key) return alert("Enter an API key first.");
   localStorage.setItem("csm_api_key", key);
-  renderSettingsView();
-  alert(
-    "API key saved to browser.\n\nTo activate it in the running pipeline, restart with:\n\n" +
-    "Linux/Mac:\n" +
-    "ANTHROPIC_API_KEY=" + key.substring(0, 12) + "... python -m src.main\n\n" +
-    "Windows (PowerShell):\n" +
-    "$env:ANTHROPIC_API_KEY='" + key.substring(0, 12) + "...'; python -m src.main\n\n" +
-    "Or edit .env file."
-  );
+
+  // Live-update the running pipeline
+  try {
+    const res = await fetch("/api/settings/api-key", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ api_key: key }),
+    });
+    const data = await res.json();
+    const status = document.getElementById("api-key-status");
+    if (data.ok && data.active) {
+      status.className = "has-key";
+      status.textContent = `✓ API key saved and activated in the running pipeline. Next transcribed chunks will be analyzed with this key.`;
+    } else if (data.error) {
+      // Pipeline not running (dashboard-only mode) — fall back to restart instructions
+      status.className = "no-key";
+      status.innerHTML = `⚠ ${escapeHtml(data.error)} Key saved locally. To use it, restart the pipeline with <code>ANTHROPIC_API_KEY=${escapeHtml(key.substring(0, 10))}...</code>`;
+    }
+  } catch (e) {
+    alert("Failed to update runtime: " + e.message);
+  }
 }
 
-function removeSettingsApiKey() {
-  if (!confirm("Remove API key from browser?")) return;
+async function removeSettingsApiKey() {
+  if (!confirm("Remove API key from browser and deactivate in pipeline?")) return;
   localStorage.removeItem("csm_api_key");
+  try {
+    await fetch("/api/settings/api-key", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ api_key: "" }),
+    });
+  } catch {}
   renderSettingsView();
 }
 
