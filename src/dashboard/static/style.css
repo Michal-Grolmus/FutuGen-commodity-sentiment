@@ -39,13 +39,29 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-
 .status-connected { color: #3fb950; font-size: 0.8rem; }
 .status-demo { color: #bc8cff; font-size: 0.8rem; }
 
-/* FILTERS PANEL (sticky, below top nav) */
-.filters-panel {
+/* SUB-NAV: jump-to navigation (sticky, directly below top nav) */
+.sub-nav {
   position: sticky; top: 44px; z-index: 99;
-  background: #161b22; border-bottom: 1px solid #30363d;
-  padding: 0.5rem 1.5rem; overflow-x: auto; white-space: nowrap;
+  background: #0d1117; border-bottom: 1px solid #21262d;
+  padding: 0.4rem 1.5rem; overflow-x: auto; white-space: nowrap;
 }
-.filters-content { display: flex; align-items: center; gap: 0.6rem; }
+.sub-nav-content { display: flex; gap: 0.3rem; align-items: center; }
+.sub-nav-btn {
+  background: transparent; border: 1px solid transparent; color: #c9d1d9;
+  padding: 3px 12px; border-radius: 999px; cursor: pointer; font-size: 0.8rem;
+  white-space: nowrap;
+}
+.sub-nav-btn:hover { background: #21262d; color: #e1e4e8; border-color: #30363d; }
+.sub-nav-btn.inactive { color: #8b949e; font-style: italic; }
+.sub-nav-btn.inactive::after { content: " +"; color: #3fb950; font-weight: 700; }
+
+/* FILTERS PANEL (at top of view content, NOT sticky) */
+.filters-panel {
+  background: #161b22; border: 1px solid #30363d; border-radius: 8px;
+  padding: 0.6rem 1rem; margin-bottom: 1rem;
+  display: flex; align-items: center; gap: 0.6rem;
+  overflow-x: auto; flex-wrap: wrap;
+}
 .filters-label {
   color: #c9d1d9; font-size: 0.75rem; font-weight: 600;
   text-transform: uppercase; letter-spacing: 0.04em; flex-shrink: 0;
@@ -66,27 +82,6 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-
 .filter-btn.toggle-all:hover { background: #1a4a2a; border-color: #2ea043; }
 .filter-btn .count { color: #c9d1d9; margin-left: 3px; font-size: 0.7rem; }
 .filter-btn.active .count { color: #c0dcff; }
-
-/* SUB-NAV: jump navigation (sticky below filters) */
-.sub-nav {
-  position: sticky; top: 86px; z-index: 98;
-  background: #0d1117; border-bottom: 1px solid #21262d;
-  padding: 0.4rem 1.5rem; overflow-x: auto; white-space: nowrap;
-}
-.sub-nav-content { display: flex; gap: 0.3rem; align-items: center; }
-.sub-nav-content::before {
-  content: "Jump to:"; color: #c9d1d9; font-size: 0.72rem;
-  text-transform: uppercase; letter-spacing: 0.04em; margin-right: 0.4rem;
-  flex-shrink: 0;
-}
-.sub-nav-btn {
-  background: transparent; border: 1px solid transparent; color: #c9d1d9;
-  padding: 2px 10px; border-radius: 999px; cursor: pointer; font-size: 0.78rem;
-  white-space: nowrap;
-}
-.sub-nav-btn:hover { background: #21262d; color: #e1e4e8; border-color: #30363d; }
-.sub-nav-btn.inactive { color: #8b949e; font-style: italic; }
-.sub-nav-btn.inactive::after { content: " +"; color: #3fb950; font-weight: 700; }
 
 /* VIEWS */
 .view { padding: 1rem 1.5rem; max-width: 1200px; margin: 0 auto; }
