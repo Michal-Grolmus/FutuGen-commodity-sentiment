@@ -610,6 +610,7 @@ function connect(endpoint) {
     if (!scoring) return;
     const streamId = event.stream_id || Object.keys(streams)[0];
     if (!streams[streamId]) addStream(streamId, streamId, "demo");
+    if (streams[streamId].stopped) return;  // skip signals + commodity events when paused
 
     const ts = Date.now();
     for (const sig of scoring.signals) {
