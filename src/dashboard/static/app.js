@@ -200,10 +200,20 @@ function renderStreams() {
     const card = document.createElement("div");
     card.className = "stream-card";
     card.id = `stream-card-${id}`;
+    const urlHref = s.url && (s.url.startsWith("http") || s.url.startsWith("rtmp")) ? s.url : null;
+    const urlHtml = urlHref
+      ? `<a class="stream-url" href="${escapeHtml(urlHref)}" target="_blank" rel="noopener">${escapeHtml(s.url)}</a>`
+      : `<span class="stream-url">${escapeHtml(s.url || "")}</span>`;
     card.innerHTML = `
       <div class="stream-card-header">
-        <span class="stream-name">${escapeHtml(s.name)}</span>
-        <span class="stream-status">${escapeHtml(s.type)}</span>
+        <div class="stream-identity">
+          <div class="stream-name">${escapeHtml(s.name)}</div>
+          ${urlHtml}
+        </div>
+        <div class="stream-actions">
+          <span class="stream-status">${escapeHtml(s.type)}</span>
+          <button class="btn-remove" onclick="removeStream('${escapeHtml(id)}')" title="Stop and remove this stream">Remove</button>
+        </div>
       </div>
       <div class="stream-transcript" id="transcript-${escapeHtml(id)}">${escapeHtml(s.transcript) || '<span style="color:#8b949e">Waiting for transcript...</span>'}</div>
       <div class="stream-signals">${signalsHtml || '<span style="color:#8b949e;font-size:0.8rem">No signals yet</span>'}${expand}</div>`;
@@ -214,6 +224,15 @@ function renderStreams() {
 function toggleStreamSignals(id) {
   const el = document.getElementById(`stream-all-${id}`);
   if (el) el.classList.toggle("hidden");
+}
+
+function removeStream(id) {
+  if (!streams[id]) return;
+  if (!confirm(`Remove stream "${streams[id].name}"? Transcript and signals will be cleared.`)) return;
+  delete streams[id];
+  selectedStreamIds.delete(id);
+  renderStreamFilters();
+  renderStreams();
 }
 
 // ===== COMMODITY VIEW =====

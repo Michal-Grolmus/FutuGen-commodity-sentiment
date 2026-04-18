@@ -106,9 +106,25 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-
 
 /* STREAM CARDS */
 .stream-card { background: #161b22; border: 1px solid #30363d; border-radius: 8px; margin-bottom: 1rem; overflow: hidden; }
-.stream-card-header { padding: 0.75rem 1rem; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #21262d; }
-.stream-name { font-weight: 600; font-size: 0.9rem; color: #e1e4e8; }
+.stream-card-header {
+  padding: 0.75rem 1rem; display: flex; justify-content: space-between;
+  align-items: flex-start; gap: 1rem; border-bottom: 1px solid #21262d;
+}
+.stream-identity { min-width: 0; flex: 1; }
+.stream-name { font-weight: 600; font-size: 0.9rem; color: #e1e4e8; margin-bottom: 2px; }
+.stream-url {
+  display: inline-block; font-size: 0.72rem; color: #58a6ff;
+  text-decoration: none; font-family: monospace;
+  max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+a.stream-url:hover { text-decoration: underline; }
+.stream-actions { display: flex; align-items: center; gap: 0.6rem; flex-shrink: 0; }
 .stream-status { font-size: 0.75rem; color: #3fb950; }
+.btn-remove {
+  background: transparent; border: 1px solid #f85149; color: #f85149;
+  padding: 3px 10px; border-radius: 6px; cursor: pointer; font-size: 0.75rem;
+}
+.btn-remove:hover { background: #3d1114; color: #ff7b72; }
 .stream-transcript { padding: 0.75rem 1rem; background: #0d1117; font-family: monospace; font-size: 0.82rem; line-height: 1.5; max-height: 120px; overflow-y: auto; color: #c9d1d9; border-bottom: 1px solid #21262d; }
 .stream-signals { padding: 0.5rem 1rem; }
 .expand-link {
