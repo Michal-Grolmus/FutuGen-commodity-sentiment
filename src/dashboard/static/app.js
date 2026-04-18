@@ -377,14 +377,26 @@ function startAllSavedStreams() {
 }
 
 function showAddStreamDialog() {
-  const url = prompt("Stream URL (YouTube live, HLS, RTMP, or local file path):");
-  if (!url) return;
-  const name = prompt("Display name:", url.substring(0, 50));
-  if (!name) return;
+  document.getElementById("add-stream-url").value = "";
+  document.getElementById("add-stream-name").value = "";
+  document.getElementById("add-stream-modal").classList.remove("hidden");
+  setTimeout(() => document.getElementById("add-stream-url").focus(), 50);
+}
+
+function closeAddStreamModal() {
+  document.getElementById("add-stream-modal").classList.add("hidden");
+}
+
+function submitAddStream() {
+  const url = document.getElementById("add-stream-url").value.trim();
+  const nameInput = document.getElementById("add-stream-name").value.trim();
+  if (!url) return alert("URL is required.");
+  const name = nameInput || url.substring(0, 50);
   const type = url.startsWith("http") || url.startsWith("rtmp") ? "live" : "file";
   addStream(name, url, type);
   renderStreamFilters();
   renderStreams();
+  closeAddStreamModal();
 }
 
 // ===== STREAM MANAGEMENT =====
@@ -545,13 +557,25 @@ async function removeCommodity(id) {
 }
 
 function showAddCommodityDialog() {
-  const name = prompt("Commodity ID (snake_case, e.g. 'lithium'):");
-  if (!name) return;
-  const display = prompt("Display name (e.g. 'Lithium'):");
-  if (!display) return;
-  const keywords = prompt("Keywords for detection (comma-separated, e.g. 'lithium, battery metal, ev battery'):") || "";
-  const ticker = prompt("Yahoo Finance ticker (optional, e.g. 'LIT' for lithium ETF):") || "";
-  saveCommodity(name, display, keywords, ticker);
+  document.getElementById("add-commodity-id").value = "";
+  document.getElementById("add-commodity-name").value = "";
+  document.getElementById("add-commodity-keywords").value = "";
+  document.getElementById("add-commodity-ticker").value = "";
+  document.getElementById("add-commodity-modal").classList.remove("hidden");
+  setTimeout(() => document.getElementById("add-commodity-id").focus(), 50);
+}
+
+function closeAddCommodityModal() {
+  document.getElementById("add-commodity-modal").classList.add("hidden");
+}
+
+function submitAddCommodity() {
+  const id = document.getElementById("add-commodity-id").value.trim();
+  const display = document.getElementById("add-commodity-name").value.trim();
+  const keywords = document.getElementById("add-commodity-keywords").value.trim();
+  const ticker = document.getElementById("add-commodity-ticker").value.trim();
+  if (!id || !display) return alert("ID and display name are required.");
+  saveCommodity(id, display, keywords, ticker);
 }
 
 async function saveCommodity(name, display, keywords, ticker) {
@@ -572,7 +596,7 @@ async function saveCommodity(name, display, keywords, ticker) {
     await loadCommodities();
     renderCommodityFilters();
     renderCommodities();
-    alert(`Added "${data.display_name}". LLM prompts and mock analyzer will now detect this commodity.`);
+    closeAddCommodityModal();
   } catch (e) {
     alert("Failed to add commodity: " + e.message);
   }

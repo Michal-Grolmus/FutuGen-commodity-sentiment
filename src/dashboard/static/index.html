@@ -141,6 +141,61 @@
     </div>
   </div>
 
+  <!-- ADD STREAM MODAL -->
+  <div id="add-stream-modal" class="modal hidden" onclick="if(event.target===this) closeAddStreamModal()">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3>Add Stream</h3>
+        <button class="btn-close" onclick="closeAddStreamModal()">×</button>
+      </div>
+      <p class="hint">Add a live stream (YouTube, HLS, RTMP) or a local audio file path. The stream appears on the dashboard — to actually transcribe, restart the pipeline with this URL.</p>
+      <div class="settings-row">
+        <label for="add-stream-url">Stream URL or file path</label>
+        <input id="add-stream-url" type="text" class="setting-select" placeholder="https://www.youtube.com/@Bloomberg/live  or  audio_samples/real/opec_raw.wav" />
+      </div>
+      <div class="settings-row">
+        <label for="add-stream-name">Display name</label>
+        <input id="add-stream-name" type="text" class="setting-select" placeholder="e.g. Bloomberg Live" />
+      </div>
+      <div class="modal-row">
+        <button onclick="submitAddStream()" class="btn-primary">Add Stream</button>
+        <button onclick="closeAddStreamModal()" class="btn-sm">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ADD COMMODITY MODAL -->
+  <div id="add-commodity-modal" class="modal hidden" onclick="if(event.target===this) closeAddCommodityModal()">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3>Add Commodity</h3>
+        <button class="btn-close" onclick="closeAddCommodityModal()">×</button>
+      </div>
+      <p class="hint">Registers the commodity in the backend so LLM prompts (and mock keyword detection) will recognize it. Changes apply immediately — no restart needed.</p>
+      <div class="settings-row">
+        <label for="add-commodity-id">Commodity ID (snake_case)</label>
+        <input id="add-commodity-id" type="text" class="setting-select" placeholder="e.g. lithium, palladium, platinum" />
+      </div>
+      <div class="settings-row">
+        <label for="add-commodity-name">Display name</label>
+        <input id="add-commodity-name" type="text" class="setting-select" placeholder="e.g. Lithium" />
+      </div>
+      <div class="settings-row">
+        <label for="add-commodity-keywords">Keywords (comma-separated)</label>
+        <input id="add-commodity-keywords" type="text" class="setting-select" placeholder="e.g. lithium, battery metal, ev battery" />
+        <p class="hint-sm">Used by the mock analyzer to detect mentions. LLM uses the canonical ID + display name.</p>
+      </div>
+      <div class="settings-row">
+        <label for="add-commodity-ticker">Yahoo Finance ticker (optional)</label>
+        <input id="add-commodity-ticker" type="text" class="setting-select" placeholder="e.g. LIT (lithium ETF)" />
+      </div>
+      <div class="modal-row">
+        <button onclick="submitAddCommodity()" class="btn-primary">Add Commodity</button>
+        <button onclick="closeAddCommodityModal()" class="btn-sm">Cancel</button>
+      </div>
+    </div>
+  </div>
+
   <!-- SIGNAL SOURCE MODAL -->
   <div id="source-modal" class="modal hidden" onclick="if(event.target===this) closeSourceModal()">
     <div class="modal-content">
