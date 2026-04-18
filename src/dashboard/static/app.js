@@ -116,8 +116,10 @@ function showApp(view) {
 function showView(view) {
   document.getElementById("view-streams").classList.toggle("hidden", view !== "streams");
   document.getElementById("view-commodities").classList.toggle("hidden", view !== "commodities");
+  document.getElementById("view-settings").classList.toggle("hidden", view !== "settings");
   document.getElementById("nav-streams").classList.toggle("active", view === "streams");
   document.getElementById("nav-commodities").classList.toggle("active", view === "commodities");
+  document.getElementById("nav-settings").classList.toggle("active", view === "settings");
 
   if (view === "commodities") {
     renderCommodityFilters();
@@ -127,6 +129,9 @@ function showView(view) {
   if (view === "streams") {
     renderStreamFilters();
     renderStreams();
+  }
+  if (view === "settings") {
+    renderSettingsView();
   }
 }
 
@@ -177,6 +182,117 @@ function showRestartCommand() {
     "Or edit .env and restart."
   );
   closeSettingsModal();
+}
+
+// ===== SETTINGS VIEW (API key management) =====
+function renderSettingsView() {
+  const key = localStorage.getItem("csm_api_key") || "";
+  const status = document.getElementById("api-key-status");
+  const input = document.getElementById("settings-api-key");
+  if (key) {
+    status.className = "has-key";
+    status.textContent = `✓ API key saved (${key.substring(0, 10)}...${key.slice(-4)}). Restart server with: ANTHROPIC_API_KEY=<key> python -m src.main`;
+    input.value = key;
+  } else {
+    status.className = "no-key";
+    status.textContent = "No API key saved. Without it, signals require --mock mode.";
+    input.value = "";
+  }
+}
+
+function saveSettingsApiKey() {
+  const key = document.getElementById("settings-api-key").value.trim();
+  if (!key) return alert("Enter an API key first.");
+  localStorage.setItem("csm_api_key", key);
+  renderSettingsView();
+  alert(
+    "API key saved to browser.\n\nTo activate it in the running pipeline, restart with:\n\n" +
+    "Linux/Mac:\n" +
+    "ANTHROPIC_API_KEY=" + key.substring(0, 12) + "... python -m src.main\n\n" +
+    "Windows (PowerShell):\n" +
+    "$env:ANTHROPIC_API_KEY='" + key.substring(0, 12) + "...'; python -m src.main\n\n" +
+    "Or edit .env file."
+  );
+}
+
+function removeSettingsApiKey() {
+  if (!confirm("Remove API key from browser?")) return;
+  localStorage.removeItem("csm_api_key");
+  renderSettingsView();
+}
+
+// ===== SOURCE MODAL =====
+async function showSignalSource(streamId, sigRef) {
+  // sigRef is a JSON-encoded signal object (passed from button onclick)
+  let sig;
+  try { sig = JSON.parse(decodeURIComponent(sigRef)); } catch { return; }
+
+  const stream = streams[streamId] || { name: streamId, url: "", type: "unknown" };
+  const body = document.getElementById("source-modal-body");
+
+  // Build modal content
+  const urlHtml = stream.url && (stream.url.startsWith("http") || stream.url.startsWith("rtmp"))
+    ? `<a href="${escapeHtml(stream.url)}" target="_blank" class="link">${escapeHtml(stream.url)}</a>`
+    : escapeHtml(stream.url || "—");
+
+  body.innerHTML = `
+    <div class="source-field">
+      <div class="source-field-label">Stream</div>
+      <div class="source-field-value"><strong>${escapeHtml(stream.name)}</strong><br>${urlHtml}</div>
+    </div>
+    <div class="source-field">
+      <div class="source-field-label">Signal</div>
+      <div class="source-field-value">
+        <strong>${escapeHtml(sig.display_name)}</strong> —
+        <span class="signal-dir ${sig.direction}">${sig.direction}</span>
+        at ${Math.round((sig.confidence || 0) * 100)}% confidence, ${(sig.timeframe || "").replace("_", " ")}
+      </div>
+    </div>
+    <div class="source-field">
+      <div class="source-field-label">Rationale</div>
+      <div class="source-field-value">${escapeHtml(sig.rationale)}</div>
+    </div>
+    <div class="source-field">
+      <div class="source-field-label">Detected at</div>
+      <div class="source-field-value">${sig._time || "—"} · chunk <code>${escapeHtml(sig.chunk_id || "n/a")}</code></div>
+    </div>
+    <div class="source-field">
+      <div class="source-field-label">Source text (chunk transcript)</div>
+      <div class="source-transcript">${escapeHtml(sig.source_text || stream.transcript || "(not available)")}</div>
+    </div>
+    <div class="source-field">
+      <div class="source-field-label">Historical comparison — current market price</div>
+      <div id="source-price" class="source-field-value">Loading...</div>
+    </div>
+    ${sig.speaker ? `<div class="source-field"><div class="source-field-label">Speaker</div><div class="source-field-value">${escapeHtml(sig.speaker)}</div></div>` : ""}
+  `;
+
+  document.getElementById("source-modal").classList.remove("hidden");
+
+  // Fetch current price for historical comparison
+  const priceEl = document.getElementById("source-price");
+  const data = await fetchJSON(`/api/prices/${sig.commodity}`);
+  if (data && data.current_price != null) {
+    const change = data.change_24h || 0;
+    const dir = change >= 0 ? "up" : "down";
+    const sign = change >= 0 ? "+" : "";
+    const alignMsg = sig.direction === "bullish" && change > 0 ? "✓ Price moved in predicted direction" :
+                     sig.direction === "bearish" && change < 0 ? "✓ Price moved in predicted direction" :
+                     sig.direction === "neutral" ? "—" : "⚠ Price moved against prediction";
+    priceEl.innerHTML = `
+      <div class="source-price-row">
+        <div><div class="source-field-label">Current</div><div class="price-value">$${data.current_price.toFixed(2)}</div></div>
+        <div><div class="source-field-label">24h change</div><div class="price-value price-change ${dir}">${sign}${change.toFixed(2)}</div></div>
+      </div>
+      <div style="margin-top:0.5rem;font-size:0.8rem;color:#c9d1d9">${alignMsg}</div>
+    `;
+  } else {
+    priceEl.textContent = "Price data unavailable for this commodity.";
+  }
+}
+
+function closeSourceModal() {
+  document.getElementById("source-modal").classList.add("hidden");
 }
 
 // ===== SAVED STREAMS MODAL =====
@@ -362,10 +478,22 @@ function renderStreams() {
           <button class="btn-remove" onclick="removeStream('${escapeHtml(id)}')" title="Remove this stream">Remove</button>
         </div>
       </div>
-      <div class="stream-transcript" id="transcript-${escapeHtml(id)}">${escapeHtml(s.transcript) || '<span style="color:#8b949e">Waiting for transcript...</span>'}</div>
+      <div class="stream-transcript" id="transcript-${escapeHtml(id)}">${escapeHtml(s.transcript) || waitingTranscriptMessage(s)}</div>
       <div class="stream-signals">${signalsHtml || '<span style="color:#8b949e;font-size:0.8rem">No signals yet</span>'}${expand}</div>`;
     container.appendChild(card);
   }
+}
+
+// Demo-backed stream names (match demo endpoint stream_map values)
+const DEMO_STREAM_NAMES = new Set(["Bloomberg Live", "CNBC Markets", "Yahoo Finance"]);
+
+function waitingTranscriptMessage(s) {
+  // If we're in demo mode and this stream won't receive demo events, tell user how to activate
+  if (isDemoMode && !DEMO_STREAM_NAMES.has(s.name)) {
+    return `<span style="color:#f0b400">Demo mode doesn't transcribe custom streams.</span>
+      <span style="color:#c9d1d9">To start real transcription, <a href="#" onclick="showView('settings');return false;" class="link">add an API key in Settings</a> and restart the pipeline with this URL.</span>`;
+  }
+  return '<span style="color:#8b949e">Waiting for transcript...</span>';
 }
 
 function toggleStopStream(id) {
@@ -560,6 +688,8 @@ function toggleCommodity(id) {
 // ===== SHARED RENDERER =====
 function renderSignalItem(sig) {
   const time = sig._time || "just now";
+  const streamId = sig._stream_id || Object.keys(streams)[0] || "";
+  const encoded = encodeURIComponent(JSON.stringify(sig));
   return `<div class="signal-item">
     <span class="signal-dir ${sig.direction}">${sig.direction}</span>
     <div class="signal-info">
@@ -568,6 +698,7 @@ function renderSignalItem(sig) {
     </div>
     <div class="signal-meta">${time}<br>${(sig.timeframe || "").replace("_", " ")}</div>
     <div class="signal-conf">${Math.round((sig.confidence || 0) * 100)}%</div>
+    <button class="btn-source" onclick="showSignalSource('${escapeHtml(streamId)}', '${encoded}')" title="Show source details">Source</button>
   </div>`;
 }
 
@@ -616,6 +747,8 @@ function connect(endpoint) {
     for (const sig of scoring.signals) {
       sig._time = new Date().toLocaleTimeString();
       sig._timestamp = ts;
+      sig._stream_id = streamId;
+      sig.chunk_id = scoring.chunk_id;
 
       streams[streamId].signals.push(sig);
       if (commodities[sig.commodity]) {

@@ -59,6 +59,7 @@
       <h1>CSM</h1>
       <button id="nav-streams" class="nav-btn active" onclick="showView('streams')">Streams</button>
       <button id="nav-commodities" class="nav-btn" onclick="showView('commodities')">Commodities</button>
+      <button id="nav-settings" class="nav-btn" onclick="showView('settings')">Settings</button>
       <div class="nav-spacer"></div>
       <span id="nav-status" class="status-connecting">...</span>
     </nav>
@@ -94,6 +95,30 @@
       <div id="no-streams" class="empty-state">No active streams. <a href="#" onclick="showOnboarding()">Add one &rarr;</a></div>
     </div>
 
+    <!-- SETTINGS VIEW -->
+    <div id="view-settings" class="view hidden">
+      <div class="view-header">
+        <h2>Settings</h2>
+      </div>
+
+      <section class="settings-card">
+        <h3 class="section-title">Anthropic API Key</h3>
+        <p class="hint">Stored in your browser's localStorage. To activate it in the pipeline, restart the server with the provided command.</p>
+        <div id="api-key-status"></div>
+        <div class="modal-row">
+          <input id="settings-api-key" type="password" placeholder="sk-ant-..." />
+          <button onclick="saveSettingsApiKey()" class="btn-primary">Save</button>
+          <button onclick="removeSettingsApiKey()" class="btn-remove">Remove</button>
+        </div>
+        <a href="https://console.anthropic.com/settings/keys" target="_blank" class="link">Get an Anthropic API key &rarr;</a>
+      </section>
+
+      <section class="settings-card">
+        <h3 class="section-title">Other Providers</h3>
+        <p class="hint">The project uses the Anthropic SDK by default. Other providers (Groq, Gemini, Mistral) can be used by setting <code>ANTHROPIC_BASE_URL</code> in <code>.env</code> for OpenAI-compatible endpoints, or by writing a small adapter.</p>
+      </section>
+    </div>
+
     <!-- COMMODITIES VIEW -->
     <div id="view-commodities" class="view hidden">
       <!-- Filters panel (not sticky, top of content) -->
@@ -113,6 +138,17 @@
       </section>
 
       <div id="commodities-grid"></div>
+    </div>
+  </div>
+
+  <!-- SIGNAL SOURCE MODAL -->
+  <div id="source-modal" class="modal hidden" onclick="if(event.target===this) closeSourceModal()">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3>Signal Source</h3>
+        <button class="btn-close" onclick="closeSourceModal()">×</button>
+      </div>
+      <div id="source-modal-body"></div>
     </div>
   </div>
 

@@ -118,6 +118,40 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-
 }
 .hint-sm { color: #8b949e; font-size: 0.72rem; margin-top: 0.35rem; line-height: 1.4; }
 
+/* SETTINGS CARD */
+.settings-card {
+  background: #161b22; border: 1px solid #30363d; border-radius: 8px;
+  padding: 1rem 1.25rem; margin-bottom: 1rem;
+}
+.settings-card .modal-row { margin-top: 0.75rem; }
+#api-key-status { font-size: 0.85rem; margin-top: 0.5rem; }
+#api-key-status.has-key { color: #3fb950; }
+#api-key-status.no-key { color: #f0b400; }
+
+/* SOURCE MODAL FIELDS */
+.source-field { margin-bottom: 0.9rem; }
+.source-field-label {
+  color: #8b949e; font-size: 0.72rem; text-transform: uppercase;
+  letter-spacing: 0.04em; margin-bottom: 0.25rem; font-weight: 600;
+}
+.source-field-value { color: #e1e4e8; font-size: 0.88rem; line-height: 1.5; }
+.source-field-value code { background: #0d1117; padding: 1px 5px; border-radius: 3px; color: #58a6ff; font-size: 0.8rem; }
+.source-transcript {
+  background: #0d1117; border: 1px solid #21262d; border-radius: 6px;
+  padding: 0.75rem; font-family: monospace; font-size: 0.78rem;
+  color: #c9d1d9; line-height: 1.5; max-height: 180px; overflow-y: auto;
+}
+.source-price-row { display: flex; gap: 1.5rem; margin-top: 0.25rem; }
+.source-price-row .price-value { font-size: 1rem; font-weight: 700; color: #e1e4e8; }
+.source-price-row .price-change.up { color: #3fb950; }
+.source-price-row .price-change.down { color: #f85149; }
+.btn-source {
+  background: transparent; border: 1px solid #30363d; color: #58a6ff;
+  padding: 2px 8px; border-radius: 4px; cursor: pointer; font-size: 0.68rem;
+  white-space: nowrap;
+}
+.btn-source:hover { border-color: #58a6ff; background: #0d2847; }
+
 /* STATS WIDGET at top of streams view */
 .stats-widget {
   background: #0d1117; border: 1px solid #21262d; border-radius: 8px;
