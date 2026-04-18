@@ -42,20 +42,24 @@ The app starts in **onboarding mode** with an interactive demo — no API key re
 For live analysis, set `ANTHROPIC_API_KEY` in `.env` and provide an audio source.
 
 ```bash
-# Run with local audio file
+# Run with local audio file (uses real Claude API)
 python -m src.main --input-file audio_samples/sample_01_opec.wav
 
 # Run with live YouTube stream
 python -m src.main --stream-url "https://www.youtube.com/watch?v=LIVE_ID"
+
+# Zero-cost mode: keyword-based analyzer, no API key needed
+python -m src.main --mock --input-file audio_samples/real/opec_raw.wav
 ```
 
 ### Docker
 
 ```bash
-cp .env.example .env
-# Edit .env
 docker compose up --build
+# Open http://localhost:8000 → click "Start Demo"
 ```
+
+No `.env` file required — the app starts in onboarding mode.
 
 ## Setup
 
@@ -104,12 +108,17 @@ Start the app without configuration → onboarding page appears with:
 - **Stream discovery** — curated list of Bloomberg, CNBC, and recorded sources
 - **API key setup** — instructions for connecting Anthropic API
 
-Dashboard features:
-- **Live signals** with bullish/bearish/neutral cards and confidence bars
-- **Sentiment summary bar** — real-time bullish/bearish ratio
-- **Confidence heatmap** — 8 commodities with color-coded confidence
-- **Commodity prices** — 30-day sparkline charts from Yahoo Finance
-- **Latency monitor** — STT/extraction/scoring performance in footer
+Dashboard has two views accessible from the top nav:
+
+**Streams view** — each active stream shows:
+- Live transcript (updates as Whisper processes audio)
+- Detected signals attached to the stream (last 3 visible, expandable to full list)
+- Each signal: commodity, direction (bullish/bearish/neutral), confidence, timeframe, rationale
+
+**Commodities view** — 8 tracked commodities with event history:
+- Latest sentiment badge per commodity
+- Last 3 events visible, expandable to full timeline
+- Events accumulate across all streams
 
 ### Transcription-Only Mode
 
