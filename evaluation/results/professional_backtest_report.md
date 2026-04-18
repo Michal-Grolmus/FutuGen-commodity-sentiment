@@ -4,11 +4,11 @@
 
 ## 1. Dataset & methodology
 
-- **Total events**: 144 (2018–2024)
+- **Total events**: 387 (2018–2024)
 - **Commodities covered**: copper, corn, crude_oil_brent, crude_oil_wti, gold, natural_gas, silver, wheat
-- **Train**: 61 events (2018-01-31 → 2021-11-26)
-- **Calibration**: 26 events (2022-02-24 → 2022-12-14)
-- **Test**: 57 events (2023-01-09 → 2024-12-18)
+- **Train**: 180 events (2018-01-03 → 2021-12-15)
+- **Calibration**: 68 events (2022-01-12 → 2022-12-20)
+- **Test**: 139 events (2023-01-09 → 2024-12-18)
 
 **Split logic:** train < 2022-01-01 · calibration 2022 · test ≥ 2023-01-01. LLM, calibration, and thresholds are fitted ONLY on train+calibration. All final metrics are on the hold-out test split — never seen before.
 
@@ -20,11 +20,11 @@
 
 | Method | Accuracy vs. market | 95% CI | vs. label |
 |---|---|---|---|
-| baseline:random | 24.6% | [12.3%, 36.8%] | 31.6% |
-| baseline:always_bullish | 47.4% | [35.1%, 61.4%] | 71.9% |
-| baseline:keyword | 26.3% | [15.8%, 38.6%] | 43.9% |
+| baseline:random | 28.8% | [21.6%, 36.7%] | 30.2% |
+| baseline:always_bullish | 47.5% | [39.6%, 55.4%] | 64.7% |
+| baseline:keyword | 25.9% | [18.7%, 34.5%] | 41.0% |
 
-> n = 57 evaluable events. CI is bootstrap-estimated over 1000 resamples. A baseline random-ternary classifier is 33%.
+> n = 139 evaluable events. CI is bootstrap-estimated over 1000 resamples. A baseline random-ternary classifier is 33%.
 
 ## 4. Confidence calibration
 
@@ -34,22 +34,22 @@
 
 | Commodity | LLM n | LLM acc | Keyword acc |
 |---|---|---|---|
-| copper | 0 | — | 14.3% |
+| copper | 0 | — | 15.4% |
 | corn | 0 | — | 0.0% |
-| crude_oil_brent | 0 | — | 62.5% |
-| crude_oil_wti | 0 | — | 50.0% |
-| gold | 0 | — | 24.0% |
+| crude_oil_brent | 0 | — | 57.9% |
+| crude_oil_wti | 0 | — | 52.9% |
+| gold | 0 | — | 20.4% |
 | natural_gas | 0 | — | 0.0% |
-| silver | 0 | — | 0.0% |
+| silver | 0 | — | 13.6% |
 | wheat | 0 | — | 0.0% |
 
 ## 6. Multi-horizon accuracy (test split)
 
 | Method | d1 | d3 | d7 | d14 | d30 |
 |---|---|---|---|---|---|
-| baseline:random | 21.1% | 36.8% | 24.6% | 38.6% | 33.3% |
-| baseline:always_bullish | 28.1% | 33.3% | 47.4% | 43.9% | 49.1% |
-| baseline:keyword | 31.6% | 28.1% | 26.3% | 31.6% | 29.8% |
+| baseline:random | 29.5% | 28.8% | 28.8% | 33.8% | 30.2% |
+| baseline:always_bullish | 30.9% | 37.4% | 47.5% | 48.2% | 54.7% |
+| baseline:keyword | 34.5% | 33.8% | 25.9% | 30.2% | 31.7% |
 
 ## 7. Confusion matrix (LLM, test split)
 
@@ -63,4 +63,4 @@
 - **No cost modelling**: P&L is gross of transaction costs.
 - **One news text per event**: production systems consume text continuously and can average multiple signals.
 
-*Report generated: 2026-04-18T23:00:00*
+*Report generated: 2026-04-18T23:59:02*
