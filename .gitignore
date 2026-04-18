@@ -17,4 +17,6 @@ build/
 venv/
 .coverage
 .claude/
-data/signals_log.jsonl
+# signals_log.jsonl is committed as seed (historical backtests)
+# Runtime additions stay but aren't re-committed; gitignore selectively:
+# (we keep the file tracked but accept local modifications)
