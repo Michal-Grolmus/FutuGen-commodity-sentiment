@@ -55,12 +55,69 @@
 
 ## 8. P&L simulation (LLM, test split)
 
-## 9. Honest limitations
+## 9. Horizon analysis — is the clock wrong, not the direction?
 
-- **Sample size**: 144 events total; ~60–70 on the test split. Power is limited — differences < ~10% accuracy points may not be statistically significant.
+*Source: baseline:keyword (LLM predictions not available)*
+
+Different event types react on different timescales — a supply shock spikes + reverts in days, a Fed pivot takes weeks to price in. Fixed-d7 evaluation can under-count predictions that were directionally correct but evaluated at the wrong clock.
+
+### Upper / lower bounds on hit rate
+
+- **Any-horizon hit rate** (correct at d1 OR d3 OR d7 OR d14 OR d30): **73.4%** — loose upper bound.
+- **All-horizons hit rate** (correct at every horizon — durable signal): **4.3%** — tight lower bound.
+- Gap between them = predictions whose direction was right but *timing-dependent*. Large gap → pick better horizon; small gap → signal is stable or universally wrong.
+
+### Signal persistence P(correct at d_h | correct at d1)
+
+| Horizon | Still correct |
+|---|---|
+| d1 | 100.0% |
+| d3 | 54.2% |
+| d7 | 33.3% |
+| d14 | 27.1% |
+| d30 | 29.2% |
+
+> ~1.0 = durable; 0.5 = the signal is already half reverted by that horizon; <0.5 = trade flipped against you.
+
+### Time-to-peak distribution
+
+- Mean peak horizon: **d16.5** (71 directional trades).
+- Distribution: d1: 6 | d3: 10 | d7: 14 | d14: 12 | d30: 29
+
+### Maximum Favorable / Adverse Excursion
+
+- **Avg MFE** (best the average trade got to): **+5.04%**
+- **Avg MAE** (worst the average trade dropped to): **-3.25%**
+- **MFE/|MAE|** ratio: **1.55** — > 1.5 indicates asymmetric payoff (good); < 1 means average drawdown exceeds average upside.
+
+### Optimal horizon per event type *(learned on train+cal)*
+
+| Event type | Best horizon | Accuracy | n (train+cal) |
+|---|---|---|---|
+| monetary | d7 | 38.1% | 21 |
+| macro | d1 | 23.1% | 13 |
+| geopolitical | d3 | 69.2% | 13 |
+| opec | d1 | 33.3% | 9 |
+| supply_disruption | d1 | 60.0% | 5 |
+| trade_policy | d1 | 33.3% | 3 |
+| weather | d7 | 50.0% | 2 |
+| market_structure | d7 | 100.0% | 1 |
+| financial_crisis | d1 | 0.0% | 1 |
+
+### Adaptive horizon vs. fixed d=7 (test split)
+
+- **Fixed d=7 accuracy**: 25.9%
+- **Adaptive (per-type horizon learned on train+cal)**: 32.4%
+- **Uplift**: +6.5% → *adaptive wins*
+
+> A positive uplift means **failing predictions at d=7 were often correct at another horizon matching their event type**. A zero or negative uplift means fixed-d7 is already close to optimal.
+
+## 10. Honest limitations
+
+- **Sample size**: 387 events total; ~140 on the test split. Power is limited — differences < ~8% accuracy points may not be statistically significant.
 - **Hindsight in labels**: `expected_direction` was curated post-hoc. The **actual-market direction** is the objective truth used in all metrics and P&L.
 - **Market-moving events bias**: the dataset is skewed toward *newsworthy* events — real-world news streams contain much more noise where the correct prediction is often neutral.
 - **No cost modelling**: P&L is gross of transaction costs.
 - **One news text per event**: production systems consume text continuously and can average multiple signals.
 
-*Report generated: 2026-04-18T23:59:02*
+*Report generated: 2026-04-19T00:07:15*

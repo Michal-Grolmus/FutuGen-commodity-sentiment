@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-04-18T23:59:02",
+  "generated_at": "2026-04-19T00:07:15",
   "bootstrap_iters": 1000,
   "dataset": {
     "total": 387,
@@ -305,5 +305,434 @@
       }
     }
   },
-  "pnl": []
+  "pnl": [],
+  "horizon_analysis": {
+    "any_horizon": {
+      "n": 139,
+      "any_hit": 0.7338129496402878
+    },
+    "all_horizons": {
+      "n": 139,
+      "all_hit": 0.04316546762589928
+    },
+    "signal_persistence": {
+      "base_n_d1_correct": 48.0,
+      "d1_given_d1": 1.0,
+      "d3_given_d1": 0.5416666666666666,
+      "d7_given_d1": 0.3333333333333333,
+      "d14_given_d1": 0.2708333333333333,
+      "d30_given_d1": 0.2916666666666667
+    },
+    "time_to_peak": {
+      "n": 71,
+      "mean_peak_horizon": 16.507042253521128,
+      "distribution": {
+        "d1": 6,
+        "d3": 10,
+        "d7": 14,
+        "d14": 12,
+        "d30": 29
+      }
+    },
+    "mae_mfe": {
+      "n": 71,
+      "avg_mfe_pct": 5.042253117210191,
+      "avg_mae_pct": -3.250258544557367,
+      "ratio_mfe_mae": 1.5513390852101785
+    },
+    "optimal_horizon_per_type": {
+      "macro": {
+        "best_horizon": 1,
+        "best_accuracy": 0.23076923076923078,
+        "n_samples": 13,
+        "all_horizons": {
+          "d1": {
+            "acc": 0.23076923076923078,
+            "n": 13
+          },
+          "d3": {
+            "acc": 0.0,
+            "n": 13
+          },
+          "d7": {
+            "acc": 0.15384615384615385,
+            "n": 13
+          },
+          "d14": {
+            "acc": 0.15384615384615385,
+            "n": 13
+          },
+          "d30": {
+            "acc": 0.07692307692307693,
+            "n": 13
+          }
+        }
+      },
+      "monetary": {
+        "best_horizon": 7,
+        "best_accuracy": 0.38095238095238093,
+        "n_samples": 21,
+        "all_horizons": {
+          "d1": {
+            "acc": 0.14285714285714285,
+            "n": 21
+          },
+          "d3": {
+            "acc": 0.23809523809523808,
+            "n": 21
+          },
+          "d7": {
+            "acc": 0.38095238095238093,
+            "n": 21
+          },
+          "d14": {
+            "acc": 0.3333333333333333,
+            "n": 21
+          },
+          "d30": {
+            "acc": 0.3333333333333333,
+            "n": 21
+          }
+        }
+      },
+      "geopolitical": {
+        "best_horizon": 3,
+        "best_accuracy": 0.6923076923076923,
+        "n_samples": 13,
+        "all_horizons": {
+          "d1": {
+            "acc": 0.07692307692307693,
+            "n": 13
+          },
+          "d3": {
+            "acc": 0.6923076923076923,
+            "n": 13
+          },
+          "d7": {
+            "acc": 0.6923076923076923,
+            "n": 13
+          },
+          "d14": {
+            "acc": 0.46153846153846156,
+            "n": 13
+          },
+          "d30": {
+            "acc": 0.5384615384615384,
+            "n": 13
+          }
+        }
+      },
+      "market_structure": {
+        "best_horizon": 7,
+        "best_accuracy": 1.0,
+        "n_samples": 1,
+        "all_horizons": {
+          "d1": {
+            "acc": 0.0,
+            "n": 1
+          },
+          "d3": {
+            "acc": 0.0,
+            "n": 1
+          },
+          "d7": {
+            "acc": 1.0,
+            "n": 1
+          },
+          "d14": {
+            "acc": 1.0,
+            "n": 1
+          },
+          "d30": {
+            "acc": 0.0,
+            "n": 1
+          }
+        }
+      },
+      "supply_disruption": {
+        "best_horizon": 1,
+        "best_accuracy": 0.6,
+        "n_samples": 5,
+        "all_horizons": {
+          "d1": {
+            "acc": 0.6,
+            "n": 5
+          },
+          "d3": {
+            "acc": 0.4,
+            "n": 5
+          },
+          "d7": {
+            "acc": 0.2,
+            "n": 5
+          },
+          "d14": {
+            "acc": 0.2,
+            "n": 5
+          },
+          "d30": {
+            "acc": 0.2,
+            "n": 5
+          }
+        }
+      },
+      "trade_policy": {
+        "best_horizon": 1,
+        "best_accuracy": 0.3333333333333333,
+        "n_samples": 3,
+        "all_horizons": {
+          "d1": {
+            "acc": 0.3333333333333333,
+            "n": 3
+          },
+          "d3": {
+            "acc": 0.0,
+            "n": 3
+          },
+          "d7": {
+            "acc": 0.0,
+            "n": 3
+          },
+          "d14": {
+            "acc": 0.0,
+            "n": 3
+          },
+          "d30": {
+            "acc": 0.0,
+            "n": 3
+          }
+        }
+      },
+      "weather": {
+        "best_horizon": 7,
+        "best_accuracy": 0.5,
+        "n_samples": 2,
+        "all_horizons": {
+          "d1": {
+            "acc": 0.0,
+            "n": 2
+          },
+          "d3": {
+            "acc": 0.0,
+            "n": 2
+          },
+          "d7": {
+            "acc": 0.5,
+            "n": 2
+          },
+          "d14": {
+            "acc": 0.5,
+            "n": 2
+          },
+          "d30": {
+            "acc": 0.0,
+            "n": 2
+          }
+        }
+      },
+      "opec": {
+        "best_horizon": 1,
+        "best_accuracy": 0.3333333333333333,
+        "n_samples": 9,
+        "all_horizons": {
+          "d1": {
+            "acc": 0.3333333333333333,
+            "n": 9
+          },
+          "d3": {
+            "acc": 0.3333333333333333,
+            "n": 9
+          },
+          "d7": {
+            "acc": 0.2222222222222222,
+            "n": 9
+          },
+          "d14": {
+            "acc": 0.0,
+            "n": 9
+          },
+          "d30": {
+            "acc": 0.0,
+            "n": 9
+          }
+        }
+      },
+      "financial_crisis": {
+        "best_horizon": 1,
+        "best_accuracy": 0.0,
+        "n_samples": 1,
+        "all_horizons": {
+          "d1": {
+            "acc": 0.0,
+            "n": 1
+          },
+          "d3": {
+            "acc": 0.0,
+            "n": 1
+          },
+          "d7": {
+            "acc": 0.0,
+            "n": 1
+          },
+          "d14": {
+            "acc": 0.0,
+            "n": 1
+          },
+          "d30": {
+            "acc": 0.0,
+            "n": 1
+          }
+        }
+      }
+    },
+    "adaptive_vs_fixed": {
+      "n": 139,
+      "adaptive_accuracy": 0.3237410071942446,
+      "fixed_d7_accuracy": 0.2589928057553957,
+      "uplift": 0.06474820143884892,
+      "per_event": [
+        {
+          "event_id": "china_reopening",
+          "event_type": "macro",
+          "horizon_used": 1,
+          "adaptive_correct": false,
+          "fixed_correct": false
+        },
+        {
+          "event_id": "cpi_gold_20230112",
+          "event_type": "macro",
+          "horizon_used": 1,
+          "adaptive_correct": false,
+          "fixed_correct": false
+        },
+        {
+          "event_id": "fed_feb2023_hike",
+          "event_type": "monetary",
+          "horizon_used": 7,
+          "adaptive_correct": false,
+          "fixed_correct": false
+        },
+        {
+          "event_id": "fomc_gold_20230201",
+          "event_type": "monetary",
+          "horizon_used": 7,
+          "adaptive_correct": false,
+          "fixed_correct": false
+        },
+        {
+          "event_id": "fomc_silver_20230201",
+          "event_type": "monetary",
+          "horizon_used": 7,
+          "adaptive_correct": false,
+          "fixed_correct": false
+        },
+        {
+          "event_id": "silver_gold_ratio_20230201",
+          "event_type": "macro",
+          "horizon_used": 1,
+          "adaptive_correct": true,
+          "fixed_correct": false
+        },
+        {
+          "event_id": "corn_mexico_gmo_20230213",
+          "event_type": "trade_policy",
+          "horizon_used": 1,
+          "adaptive_correct": true,
+          "fixed_correct": false
+        },
+        {
+          "event_id": "cpi_feb2023",
+          "event_type": "macro",
+          "horizon_used": 1,
+          "adaptive_correct": false,
+          "fixed_correct": false
+        },
+        {
+          "event_id": "cpi_gold_20230214",
+          "event_type": "macro",
+          "horizon_used": 1,
+          "adaptive_correct": false,
+          "fixed_correct": false
+        },
+        {
+          "event_id": "ng_warm_winter_20230215",
+          "event_type": "weather",
+          "horizon_used": 7,
+          "adaptive_correct": false,
+          "fixed_correct": false
+        },
+        {
+          "event_id": "ng_cold_20230301",
+          "event_type": "weather",
+          "horizon_used": 7,
+          "adaptive_correct": false,
+          "fixed_correct": false
+        },
+        {
+          "event_id": "svb_collapse",
+          "event_type": "financial_crisis",
+          "horizon_used": 1,
+          "adaptive_correct": false,
+          "fixed_correct": false
+        },
+        {
+          "event_id": "fomc_20230322",
+          "event_type": "monetary",
+          "horizon_used": 7,
+          "adaptive_correct": true,
+          "fixed_correct": true
+        },
+        {
+          "event_id": "fomc_gold_20230322",
+          "event_type": "monetary",
+          "horizon_used": 7,
+          "adaptive_correct": false,
+          "fixed_correct": false
+        },
+        {
+          "event_id": "fomc_silver_20230322",
+          "event_type": "monetary",
+          "horizon_used": 7,
+          "adaptive_correct": false,
+          "fixed_correct": false
+        },
+        {
+          "event_id": "oil_iraq_kurdistan_20230325",
+          "event_type": "supply_disruption",
+          "horizon_used": 1,
+          "adaptive_correct": false,
+          "fixed_correct": false
+        },
+        {
+          "event_id": "opec_apr2023_cut",
+          "event_type": "opec",
+          "horizon_used": 1,
+          "adaptive_correct": false,
+          "fixed_correct": true
+        },
+        {
+          "event_id": "opec_apr2023_cut_brent",
+          "event_type": "opec",
+          "horizon_used": 1,
+          "adaptive_correct": false,
+          "fixed_correct": true
+        },
+        {
+          "event_id": "opec_crude_oil_wti_20230403",
+          "event_type": "opec",
+          "horizon_used": 1,
+          "adaptive_correct": false,
+          "fixed_correct": true
+        },
+        {
+          "event_id": "opec_crude_oil_brent_20230403",
+          "event_type": "opec",
+          "horizon_used": 1,
+          "adaptive_correct": false,
+          "fixed_correct": true
+        }
+      ]
+    },
+    "source": "baseline:keyword (LLM predictions not available)"
+  }
 }

@@ -954,12 +954,14 @@ async function refreshEvaluation() {
     pnl: document.getElementById("eval-pnl-content"),
   };
 
+  const horizonAnalysisEl = document.getElementById("eval-horizon-analysis-content");
   let data;
   try {
     const res = await fetch("/api/backtest/professional");
     data = await res.json();
   } catch (e) {
     Object.values(containers).forEach(el => { if (el) el.textContent = "Failed to load: " + e.message; });
+    if (horizonAnalysisEl) horizonAnalysisEl.textContent = "Failed to load: " + e.message;
     return;
   }
 
@@ -971,6 +973,7 @@ async function refreshEvaluation() {
     ["headline", "reliability", "comparisons", "horizon", "commodity", "pnl"].forEach(k => {
       if (containers[k]) containers[k].innerHTML = "<p class='hint'>Not available until backtest is run.</p>";
     });
+    if (horizonAnalysisEl) horizonAnalysisEl.innerHTML = "<p class='hint'>Not available until backtest is run.</p>";
     return;
   }
 
@@ -981,6 +984,85 @@ async function refreshEvaluation() {
   renderEvalHorizon(containers.horizon, data);
   renderEvalCommodity(containers.commodity, data);
   renderEvalPnl(containers.pnl, data);
+  renderEvalHorizonAnalysis(horizonAnalysisEl, data);
+}
+
+function renderEvalHorizonAnalysis(el, data) {
+  if (!el) return;
+  const ha = data.horizon_analysis;
+  if (!ha) {
+    el.innerHTML = "<p class='hint'>No horizon analysis data.</p>";
+    return;
+  }
+  const source = ha.source || "unknown";
+  const anyHit = ((ha.any_horizon || {}).any_hit || 0) * 100;
+  const allHit = ((ha.all_horizons || {}).all_hit || 0) * 100;
+  const adap = ha.adaptive_vs_fixed || {};
+  const uplift = (adap.uplift || 0) * 100;
+  const upliftStr = uplift >= 0 ? `+${uplift.toFixed(1)}%` : `${uplift.toFixed(1)}%`;
+  const upliftColor = uplift > 2 ? "#3fb950" : (uplift < -2 ? "#f85149" : "#8b949e");
+
+  const persist = ha.signal_persistence || {};
+  const persistRows = [1, 3, 7, 14, 30].map(h => {
+    const v = persist[`d${h}_given_d1`];
+    return v != null ? `<tr><td>d${h}</td><td>${(v * 100).toFixed(1)}%</td></tr>` : `<tr><td>d${h}</td><td>&mdash;</td></tr>`;
+  }).join("");
+
+  const mm = ha.mae_mfe || {};
+  const maeMfeHtml = mm.n ? `
+    <table class="eval-table">
+      <thead><tr><th>Metric</th><th>Value</th></tr></thead>
+      <tbody>
+        <tr><td>Avg MFE (best the average trade got to)</td><td>${(mm.avg_mfe_pct || 0).toFixed(2)}%</td></tr>
+        <tr><td>Avg MAE (worst the average trade dropped to)</td><td>${(mm.avg_mae_pct || 0).toFixed(2)}%</td></tr>
+        <tr><td>MFE / |MAE| ratio</td><td>${mm.ratio_mfe_mae != null ? mm.ratio_mfe_mae.toFixed(2) : "&mdash;"}</td></tr>
+      </tbody>
+    </table>` : "<p class='hint'>No MAE/MFE data.</p>";
+
+  const opt = ha.optimal_horizon_per_type || {};
+  const optRows = Object.entries(opt)
+    .sort((a, b) => b[1].n_samples - a[1].n_samples)
+    .map(([et, row]) => `<tr><td>${escapeHtml(et)}</td><td>d${row.best_horizon}</td><td>${(row.best_accuracy * 100).toFixed(1)}%</td><td>${row.n_samples}</td></tr>`)
+    .join("");
+
+  el.innerHTML = `
+    <p class="hint"><strong>Source:</strong> ${escapeHtml(source)}</p>
+
+    <h4 style="margin-top:1rem;margin-bottom:0.4rem">Upper / lower bounds</h4>
+    <table class="eval-table">
+      <tbody>
+        <tr><td><strong>Any-horizon hit rate</strong> (correct at d1 OR d3 OR d7 OR d14 OR d30)</td><td><strong>${anyHit.toFixed(1)}%</strong></td></tr>
+        <tr><td><strong>All-horizons hit rate</strong> (correct at every horizon &mdash; durable signal)</td><td><strong>${allHit.toFixed(1)}%</strong></td></tr>
+        <tr><td colspan="2" class="hint">Gap between them = predictions whose direction was right but <em>timing-dependent</em>. Large gap &rarr; optimizing horizon can help.</td></tr>
+      </tbody>
+    </table>
+
+    <h4 style="margin-top:1rem;margin-bottom:0.4rem">Adaptive horizon vs. fixed d=7</h4>
+    <table class="eval-table">
+      <tbody>
+        <tr><td>Fixed d=7 accuracy</td><td>${((adap.fixed_d7_accuracy || 0) * 100).toFixed(1)}%</td></tr>
+        <tr><td>Adaptive accuracy (per-type horizon learned on train+cal)</td><td>${((adap.adaptive_accuracy || 0) * 100).toFixed(1)}%</td></tr>
+        <tr><td><strong>Uplift</strong></td><td><strong style="color:${upliftColor}">${upliftStr}</strong></td></tr>
+      </tbody>
+    </table>
+    <p class="hint" style="font-size:0.72rem">Positive uplift &rarr; failing predictions at d=7 were often correct at another horizon matching their event type. Learned without look-ahead: horizons fitted on train+cal, applied to test.</p>
+
+    <h4 style="margin-top:1rem;margin-bottom:0.4rem">Signal persistence P(correct at d_h | correct at d1)</h4>
+    <table class="eval-table">
+      <thead><tr><th>Horizon</th><th>Still correct</th></tr></thead>
+      <tbody>${persistRows}</tbody>
+    </table>
+    <p class="hint" style="font-size:0.72rem">~1.0 = durable; 0.5 = signal already half reverted; &lt;0.5 = trade flipped against you.</p>
+
+    <h4 style="margin-top:1rem;margin-bottom:0.4rem">Maximum Favorable / Adverse Excursion</h4>
+    ${maeMfeHtml}
+
+    <h4 style="margin-top:1rem;margin-bottom:0.4rem">Optimal horizon per event type (from train+cal)</h4>
+    <table class="eval-table">
+      <thead><tr><th>Event type</th><th>Best horizon</th><th>Accuracy</th><th>n</th></tr></thead>
+      <tbody>${optRows}</tbody>
+    </table>
+  `;
 }
 
 function renderEvalDataset(el, data) {

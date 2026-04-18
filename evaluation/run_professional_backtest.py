@@ -36,6 +36,7 @@ from evaluation.calibration import (
     save_calibration,
 )
 from evaluation.grade import HORIZONS, grade
+from evaluation.horizon_analysis import analyze_all as horizon_analyze
 from evaluation.pnl import simulate
 from evaluation.reliability import reliability_diagram_svg
 from evaluation.splits import SplitConfig, describe_split, split_events
@@ -343,10 +344,92 @@ def markdown_report(summary: dict[str, Any]) -> str:
                    "assumption of ~0.05–0.15% per round-trip would erode Sharpe noticeably.")
         out.append("")
 
+    # --- Horizon analysis ---
+    ha = summary.get("horizon_analysis")
+    if ha:
+        out.append("## 9. Horizon analysis — is the clock wrong, not the direction?\n")
+        out.append(f"*Source: {ha.get('source', 'unknown')}*\n")
+        out.append("Different event types react on different timescales — a supply "
+                   "shock spikes + reverts in days, a Fed pivot takes weeks to price in. "
+                   "Fixed-d7 evaluation can under-count predictions that were directionally "
+                   "correct but evaluated at the wrong clock.\n")
+
+        any_hit = ha.get("any_horizon", {})
+        all_hit = ha.get("all_horizons", {})
+        out.append("### Upper / lower bounds on hit rate\n")
+        out.append(f"- **Any-horizon hit rate** (correct at d1 OR d3 OR d7 OR d14 OR d30): "
+                   f"**{any_hit.get('any_hit', 0):.1%}** — loose upper bound.")
+        out.append(f"- **All-horizons hit rate** (correct at every horizon — durable signal): "
+                   f"**{all_hit.get('all_hit', 0):.1%}** — tight lower bound.")
+        out.append("- Gap between them = predictions whose direction was right but "
+                   "*timing-dependent*. Large gap → pick better horizon; small gap → "
+                   "signal is stable or universally wrong.\n")
+
+        persist = ha.get("signal_persistence", {})
+        if persist and persist.get("base_n_d1_correct"):
+            out.append("### Signal persistence P(correct at d_h | correct at d1)\n")
+            out.append("| Horizon | Still correct |")
+            out.append("|---|---|")
+            for h in HORIZONS:
+                v = persist.get(f"d{h}_given_d1")
+                out.append(f"| d{h} | {v:.1%} |" if v is not None else f"| d{h} | — |")
+            out.append("")
+            out.append("> ~1.0 = durable; 0.5 = the signal is already half reverted by "
+                       "that horizon; <0.5 = trade flipped against you.\n")
+
+        ttp = ha.get("time_to_peak", {})
+        if ttp and ttp.get("n"):
+            dist = ttp.get("distribution", {})
+            out.append("### Time-to-peak distribution\n")
+            out.append(f"- Mean peak horizon: **d{ttp.get('mean_peak_horizon', 0):.1f}** "
+                       f"({ttp.get('n', 0)} directional trades).")
+            bar_rows = " | ".join(f"{k}: {v}" for k, v in dist.items())
+            out.append(f"- Distribution: {bar_rows}")
+            out.append("")
+
+        mae_mfe = ha.get("mae_mfe", {})
+        if mae_mfe and mae_mfe.get("n"):
+            ratio_val = mae_mfe.get('ratio_mfe_mae')
+            ratio = f"{ratio_val:.2f}" if ratio_val is not None else "—"
+            out.append("### Maximum Favorable / Adverse Excursion\n")
+            out.append(f"- **Avg MFE** (best the average trade got to): "
+                       f"**{mae_mfe.get('avg_mfe_pct', 0):+.2f}%**")
+            out.append(f"- **Avg MAE** (worst the average trade dropped to): "
+                       f"**{mae_mfe.get('avg_mae_pct', 0):+.2f}%**")
+            out.append(f"- **MFE/|MAE|** ratio: **{ratio}** — > 1.5 indicates "
+                       "asymmetric payoff (good); < 1 means average drawdown exceeds "
+                       "average upside.")
+            out.append("")
+
+        opt = ha.get("optimal_horizon_per_type", {})
+        if opt:
+            out.append("### Optimal horizon per event type *(learned on train+cal)*\n")
+            out.append("| Event type | Best horizon | Accuracy | n (train+cal) |")
+            out.append("|---|---|---|---|")
+            for et, row in sorted(opt.items(), key=lambda x: -x[1]["n_samples"]):
+                out.append(f"| {et} | d{row['best_horizon']} | "
+                           f"{row['best_accuracy']:.1%} | {row['n_samples']} |")
+            out.append("")
+
+        adap = ha.get("adaptive_vs_fixed", {})
+        if adap and adap.get("n"):
+            uplift = adap.get("uplift", 0)
+            verdict = "adaptive wins" if uplift > 0.02 else (
+                "fixed-d7 wins" if uplift < -0.02 else "no meaningful difference")
+            out.append("### Adaptive horizon vs. fixed d=7 (test split)\n")
+            out.append(f"- **Fixed d=7 accuracy**: {adap.get('fixed_d7_accuracy', 0):.1%}")
+            out.append(f"- **Adaptive (per-type horizon learned on train+cal)**: "
+                       f"{adap.get('adaptive_accuracy', 0):.1%}")
+            out.append(f"- **Uplift**: {uplift:+.1%} → *{verdict}*")
+            out.append("")
+            out.append("> A positive uplift means **failing predictions at d=7 were often "
+                       "correct at another horizon matching their event type**. A zero or "
+                       "negative uplift means fixed-d7 is already close to optimal.\n")
+
     # --- Limitations ---
-    out.append("## 9. Honest limitations\n")
-    out.append("- **Sample size**: 144 events total; ~60–70 on the test split. "
-               "Power is limited — differences < ~10% accuracy points may not be statistically significant.")
+    out.append("## 10. Honest limitations\n")
+    out.append("- **Sample size**: 387 events total; ~140 on the test split. "
+               "Power is limited — differences < ~8% accuracy points may not be statistically significant.")
     out.append("- **Hindsight in labels**: `expected_direction` was curated post-hoc. "
                "The **actual-market direction** is the objective truth used in all metrics and P&L.")
     out.append("- **Market-moving events bias**: the dataset is skewed toward *newsworthy* events — "
@@ -478,6 +561,21 @@ def main() -> None:  # noqa: PLR0915
                 sim = simulate(preds_list, ordered_events, horizon=h, threshold=t)
                 pnl_rows.append({k: v for k, v in sim.items() if k != "trade_list"})
 
+    # Horizon analysis: is a wrong d=7 prediction correct at d=1 or d=14?
+    # Uses LLM test if available; otherwise falls back to keyword baseline so the
+    # report has the methodology section even without an API key.
+    horizon_report: dict[str, Any] | None = None
+    test_for_horizon = graded["llm_test"]
+    train_cal_for_horizon = graded["llm_calib"]
+    horizon_source = "llm"
+    if not test_for_horizon:
+        test_for_horizon = graded["baseline_test"].get("keyword", [])
+        train_cal_for_horizon = graded["baseline_calib"].get("keyword", [])
+        horizon_source = "baseline:keyword (LLM predictions not available)"
+    if test_for_horizon:
+        horizon_report = horizon_analyze(test_for_horizon, train_cal_for_horizon, events)
+        horizon_report["source"] = horizon_source
+
     # Final summary
     from datetime import datetime
     summary: dict[str, Any] = {
@@ -498,6 +596,7 @@ def main() -> None:  # noqa: PLR0915
         } if calibration_obj else None,
         "per_commodity": per_commodity,
         "pnl": pnl_rows,
+        "horizon_analysis": horizon_report,
     }
 
     with open(SUMMARY_JSON_PATH, "w", encoding="utf-8") as f:
