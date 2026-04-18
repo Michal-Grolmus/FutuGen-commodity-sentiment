@@ -55,6 +55,7 @@
       <h1>CSM</h1>
       <button id="nav-streams" class="nav-btn active" onclick="showView('streams')">Streams</button>
       <button id="nav-commodities" class="nav-btn" onclick="showView('commodities')">Commodities</button>
+      <button id="nav-evaluation" class="nav-btn" onclick="showView('evaluation')">Evaluation</button>
       <button id="nav-settings" class="nav-btn" onclick="showView('settings')">Settings</button>
       <div class="nav-spacer"></div>
       <span id="nav-status" class="status-connecting">...</span>
@@ -158,6 +159,54 @@
       </section>
 
       <div id="commodities-grid"></div>
+    </div>
+
+    <!-- EVALUATION VIEW -->
+    <div id="view-evaluation" class="view hidden">
+      <div class="view-header">
+        <h2>Professional Backtest</h2>
+        <div class="header-actions">
+          <button onclick="refreshEvaluation()" class="btn-sm">Refresh</button>
+          <a href="/api/backtest/report" target="_blank" class="btn-sm">Full Markdown Report &rarr;</a>
+        </div>
+      </div>
+      <p class="hint">Walk-forward evaluation on 144 curated historical events (2018&ndash;2024), point-in-time split (train &lt; 2022, calibration = 2022, test &ge; 2023). Metrics reported on the hold-out test split only.</p>
+
+      <section class="settings-card" id="eval-dataset-card">
+        <h3 class="section-title">Dataset &amp; split</h3>
+        <div id="eval-dataset-content" class="hint">Loading&hellip;</div>
+      </section>
+
+      <section class="settings-card">
+        <h3 class="section-title">Headline accuracy (test split, d=7)</h3>
+        <div id="eval-headline-content" class="hint">Loading&hellip;</div>
+      </section>
+
+      <section class="settings-card">
+        <h3 class="section-title">Reliability diagram (confidence calibration)</h3>
+        <div id="eval-reliability-content" class="hint">Loading&hellip;</div>
+      </section>
+
+      <section class="settings-card">
+        <h3 class="section-title">Statistical comparisons (LLM vs. baselines, McNemar)</h3>
+        <div id="eval-comparisons-content" class="hint">Loading&hellip;</div>
+      </section>
+
+      <section class="settings-card">
+        <h3 class="section-title">Multi-horizon accuracy</h3>
+        <div id="eval-horizon-content" class="hint">Loading&hellip;</div>
+      </section>
+
+      <section class="settings-card">
+        <h3 class="section-title">Per-commodity breakdown</h3>
+        <div id="eval-commodity-content" class="hint">Loading&hellip;</div>
+      </section>
+
+      <section class="settings-card">
+        <h3 class="section-title">P&amp;L simulation (LLM, threshold &ge; 0.60)</h3>
+        <div id="eval-pnl-content" class="hint">Loading&hellip;</div>
+        <p class="hint" style="font-size:0.72rem;margin-top:0.5rem">Gross of transaction costs. 1-unit per trade. Sharpe annualized at 252 trading days / horizon.</p>
+      </section>
     </div>
   </div>
 

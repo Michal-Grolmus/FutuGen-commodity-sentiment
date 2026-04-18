@@ -116,9 +116,12 @@ function showApp(view) {
 function showView(view) {
   document.getElementById("view-streams").classList.toggle("hidden", view !== "streams");
   document.getElementById("view-commodities").classList.toggle("hidden", view !== "commodities");
+  document.getElementById("view-evaluation").classList.toggle("hidden", view !== "evaluation");
   document.getElementById("view-settings").classList.toggle("hidden", view !== "settings");
   document.getElementById("nav-streams").classList.toggle("active", view === "streams");
   document.getElementById("nav-commodities").classList.toggle("active", view === "commodities");
+  const evalNav = document.getElementById("nav-evaluation");
+  if (evalNav) evalNav.classList.toggle("active", view === "evaluation");
   document.getElementById("nav-settings").classList.toggle("active", view === "settings");
 
   if (view === "commodities") {
@@ -129,6 +132,9 @@ function showView(view) {
   if (view === "streams") {
     renderStreamFilters();
     renderStreams();
+  }
+  if (view === "evaluation") {
+    refreshEvaluation();
   }
   if (view === "settings") {
     renderSettingsView();
@@ -935,6 +941,193 @@ async function pollBacktest() {
 }
 setInterval(pollBacktest, 10000);
 pollBacktest();
+
+// ===== EVALUATION VIEW =====
+async function refreshEvaluation() {
+  const containers = {
+    dataset: document.getElementById("eval-dataset-content"),
+    headline: document.getElementById("eval-headline-content"),
+    reliability: document.getElementById("eval-reliability-content"),
+    comparisons: document.getElementById("eval-comparisons-content"),
+    horizon: document.getElementById("eval-horizon-content"),
+    commodity: document.getElementById("eval-commodity-content"),
+    pnl: document.getElementById("eval-pnl-content"),
+  };
+
+  let data;
+  try {
+    const res = await fetch("/api/backtest/professional");
+    data = await res.json();
+  } catch (e) {
+    Object.values(containers).forEach(el => { if (el) el.textContent = "Failed to load: " + e.message; });
+    return;
+  }
+
+  if (data.error) {
+    const msg = `<p class="no-key">${escapeHtml(data.error)}</p>` +
+                `<pre style="white-space:pre-wrap;font-size:0.8rem;background:#0d1117;padding:0.5rem;border-radius:4px">` +
+                `python -m evaluation.fetch_prices\npython -m evaluation.walk_forward --split calibration\npython -m evaluation.walk_forward --split test\npython -m evaluation.run_professional_backtest</pre>`;
+    if (containers.dataset) containers.dataset.innerHTML = msg;
+    ["headline", "reliability", "comparisons", "horizon", "commodity", "pnl"].forEach(k => {
+      if (containers[k]) containers[k].innerHTML = "<p class='hint'>Not available until backtest is run.</p>";
+    });
+    return;
+  }
+
+  renderEvalDataset(containers.dataset, data);
+  renderEvalHeadline(containers.headline, data);
+  renderEvalReliability(containers.reliability, data);
+  renderEvalComparisons(containers.comparisons, data);
+  renderEvalHorizon(containers.horizon, data);
+  renderEvalCommodity(containers.commodity, data);
+  renderEvalPnl(containers.pnl, data);
+}
+
+function renderEvalDataset(el, data) {
+  if (!el) return;
+  const ds = data.dataset || {};
+  const split = ds.split || {};
+  const rows = ["train", "calibration", "test"].map(name => {
+    const s = split[name] || {};
+    if (!s.count) return `<tr><td>${name}</td><td>0</td><td>&mdash;</td></tr>`;
+    return `<tr><td>${name}</td><td>${s.count}</td><td>${s.date_min} &rarr; ${s.date_max}</td></tr>`;
+  }).join("");
+  el.innerHTML = `
+    <p>Total events: <strong>${ds.total || 0}</strong> across ${(ds.commodities || []).length} commodities (${(ds.commodities || []).join(", ")}).</p>
+    <table class="eval-table">
+      <thead><tr><th>Split</th><th>Count</th><th>Date range</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+}
+
+function renderEvalHeadline(el, data) {
+  if (!el) return;
+  const methods = data.methods || {};
+  if (Object.keys(methods).length === 0) {
+    el.innerHTML = "<p class='hint'>No methods evaluated yet.</p>";
+    return;
+  }
+  const primaryKey = "d7";
+  const rows = Object.entries(methods).map(([name, row]) => {
+    const m = (row.metrics_test || {})[primaryKey] || {};
+    const market = m.accuracy_vs_market || {};
+    const label = m.accuracy_vs_label || {};
+    const marketStr = market.point != null
+      ? `${(market.point * 100).toFixed(1)}% <span class="hint">[${(market.ci95_low * 100).toFixed(1)}–${(market.ci95_high * 100).toFixed(1)}]</span>`
+      : "&mdash;";
+    const labelStr = label.point != null ? `${(label.point * 100).toFixed(1)}%` : "&mdash;";
+    return `<tr><td>${escapeHtml(name)}</td><td>${marketStr}</td><td>${labelStr}</td></tr>`;
+  }).join("");
+  el.innerHTML = `
+    <table class="eval-table">
+      <thead><tr><th>Method</th><th>Accuracy vs. market (d=7) + 95% CI</th><th>vs. label</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+}
+
+function renderEvalReliability(el, data) {
+  if (!el) return;
+  if (!data.calibration) {
+    el.innerHTML = "<p class='hint'>No LLM calibration data yet. Run walk_forward on calibration + test splits.</p>";
+    return;
+  }
+  const cal = data.calibration;
+  el.innerHTML = `
+    <p>ECE before calibration: <strong>${cal.ece_before.toFixed(3)}</strong> &rarr; after (test split): <strong>${cal.ece_after_test.toFixed(3)}</strong>. Lower is better; 0 = perfectly calibrated.</p>
+    <div style="display:flex;gap:1rem;flex-wrap:wrap">
+      <div><div class="hint">Calibration split</div><img src="/api/backtest/reliability.svg?split=calibration" alt="Reliability calibration" style="max-width:100%;border-radius:6px"/></div>
+      <div><div class="hint">Test split (post-calibration)</div><img src="/api/backtest/reliability.svg?split=test" alt="Reliability test" style="max-width:100%;border-radius:6px"/></div>
+    </div>`;
+}
+
+function renderEvalComparisons(el, data) {
+  if (!el) return;
+  const comps = data.comparisons || {};
+  if (Object.keys(comps).length === 0) {
+    el.innerHTML = "<p class='hint'>LLM predictions not available yet.</p>";
+    return;
+  }
+  const rows = Object.entries(comps).map(([label, c]) => {
+    const verdict = (c.p_value < 0.05 && c.a_only_correct > c.b_only_correct)
+      ? "<span style='color:#3fb950'>LLM wins</span>"
+      : (c.p_value < 0.05 ? "<span style='color:#f85149'>Baseline wins</span>" : "<span class='hint'>tie</span>");
+    return `<tr><td>${escapeHtml(label)}</td><td>${c.both_correct}</td><td>${c.a_only_correct}</td><td>${c.b_only_correct}</td><td>${c.both_wrong}</td><td>${c.p_value.toFixed(3)}</td><td>${verdict}</td></tr>`;
+  }).join("");
+  el.innerHTML = `
+    <table class="eval-table">
+      <thead><tr><th>Comparison</th><th>Both right</th><th>LLM only</th><th>Baseline only</th><th>Both wrong</th><th>p-value</th><th>Verdict</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+}
+
+function renderEvalHorizon(el, data) {
+  if (!el) return;
+  const methods = data.methods || {};
+  if (Object.keys(methods).length === 0) {
+    el.innerHTML = "<p class='hint'>No data.</p>";
+    return;
+  }
+  const horizons = ["d1", "d3", "d7", "d14", "d30"];
+  const rows = Object.entries(methods).map(([name, row]) => {
+    const cells = horizons.map(h => {
+      const m = (row.metrics_test || {})[h] || {};
+      const p = (m.accuracy_vs_market || {}).point;
+      return p != null ? `${(p * 100).toFixed(1)}%` : "&mdash;";
+    });
+    return `<tr><td>${escapeHtml(name)}</td>${cells.map(c => `<td>${c}</td>`).join("")}</tr>`;
+  }).join("");
+  el.innerHTML = `
+    <table class="eval-table">
+      <thead><tr><th>Method</th><th>d1</th><th>d3</th><th>d7</th><th>d14</th><th>d30</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+}
+
+function renderEvalCommodity(el, data) {
+  if (!el) return;
+  const pc = data.per_commodity || {};
+  const llm = pc.llm || {};
+  const kw = pc.keyword || {};
+  const commodities = Array.from(new Set([...Object.keys(llm), ...Object.keys(kw)])).sort();
+  if (commodities.length === 0) {
+    el.innerHTML = "<p class='hint'>No commodity data.</p>";
+    return;
+  }
+  const rows = commodities.map(c => {
+    const l = llm[c] || {};
+    const k = kw[c] || {};
+    const lAcc = l.accuracy != null ? `${(l.accuracy * 100).toFixed(1)}%` : "&mdash;";
+    const kAcc = k.accuracy != null ? `${(k.accuracy * 100).toFixed(1)}%` : "&mdash;";
+    return `<tr><td>${escapeHtml(c)}</td><td>${l.count || 0}</td><td>${lAcc}</td><td>${kAcc}</td></tr>`;
+  }).join("");
+  el.innerHTML = `
+    <table class="eval-table">
+      <thead><tr><th>Commodity</th><th>LLM n</th><th>LLM acc</th><th>Keyword acc</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+}
+
+function renderEvalPnl(el, data) {
+  if (!el) return;
+  const pnl = data.pnl || [];
+  const filtered = pnl.filter(p => p.confidence_threshold === 0.6);
+  if (filtered.length === 0) {
+    el.innerHTML = "<p class='hint'>No LLM P&L data yet.</p>";
+    return;
+  }
+  const rows = filtered.map(r => {
+    const sharpe = r.sharpe != null ? r.sharpe.toFixed(2) : "&mdash;";
+    const wr = r.win_rate != null ? `${(r.win_rate * 100).toFixed(1)}%` : "&mdash;";
+    const total = r.total_return.toFixed(3);
+    const dd = r.max_drawdown.toFixed(3);
+    return `<tr><td>d${r.horizon_days}</td><td>${r.trades}</td><td>${total}</td><td>${sharpe}</td><td>${dd}</td><td>${wr}</td></tr>`;
+  }).join("");
+  el.innerHTML = `
+    <table class="eval-table">
+      <thead><tr><th>Horizon</th><th>Trades</th><th>Total log-return</th><th>Sharpe</th><th>Max DD</th><th>Win rate</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+}
 
 // ===== START =====
 init();

@@ -311,6 +311,39 @@ def create_app(broadcaster: SignalBroadcaster | None = None) -> FastAPI:
         entries = signal_log.read_all()
         return entries[-limit:]
 
+    @app.get("/api/backtest/professional")
+    async def backtest_professional() -> dict[str, object]:
+        """Return the professional backtest summary (dataset, baselines, LLM, P&L)."""
+        summary_path = PROJECT_ROOT / "evaluation" / "results" / "professional_summary.json"
+        if not summary_path.exists():
+            return {"error": "Not generated yet. Run `python -m evaluation.run_professional_backtest`."}
+        with open(summary_path, encoding="utf-8") as f:
+            return json.load(f)
+
+    @app.get("/api/backtest/reliability.svg")
+    async def backtest_reliability_svg(split: str = "test") -> Response:
+        """Return the reliability diagram SVG for the requested split."""
+        fname = "reliability_llm_test.svg" if split == "test" else "reliability_llm_calibration.svg"
+        svg_path = PROJECT_ROOT / "evaluation" / "results" / fname
+        if not svg_path.exists():
+            return Response(
+                content='<svg xmlns="http://www.w3.org/2000/svg" width="480" height="380">'
+                        '<rect width="480" height="380" fill="#0d1117"/>'
+                        '<text x="240" y="190" fill="#8b949e" text-anchor="middle" '
+                        'font-family="system-ui" font-size="14">Run walk-forward + backtest to generate</text>'
+                        '</svg>',
+                media_type="image/svg+xml",
+            )
+        return Response(content=svg_path.read_text(encoding="utf-8"), media_type="image/svg+xml")
+
+    @app.get("/api/backtest/report")
+    async def backtest_report() -> Response:
+        """Return the rendered Markdown report as plain text."""
+        report_path = PROJECT_ROOT / "evaluation" / "results" / "professional_backtest_report.md"
+        if not report_path.exists():
+            return Response(content="Report not generated yet.", media_type="text/plain")
+        return Response(content=report_path.read_text(encoding="utf-8"), media_type="text/markdown")
+
     @app.get("/api/streams")
     async def get_streams() -> list[dict[str, str]]:
         """Return curated list of commodity news streams."""

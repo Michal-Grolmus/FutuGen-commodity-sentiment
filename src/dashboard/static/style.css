@@ -272,3 +272,10 @@ a.stream-url:hover { text-decoration: underline; }
   #latest-events-grid { grid-template-columns: 1fr; }
 }
 @media (max-width: 768px) { .view { padding: 0.75rem; } }
+
+/* Evaluation view tables */
+.eval-table { width: 100%; border-collapse: collapse; margin-top: 0.5rem; font-size: 0.85rem; }
+.eval-table th, .eval-table td { padding: 0.4rem 0.6rem; text-align: left; border-bottom: 1px solid #30363d; }
+.eval-table th { color: #8b949e; font-weight: 500; background: #0d1117; }
+.eval-table td { color: #c9d1d9; }
+.eval-table tr:hover td { background: #161b22; }

@@ -1,0 +1,309 @@
+{
+  "generated_at": "2026-04-18T23:00:00",
+  "bootstrap_iters": 1000,
+  "dataset": {
+    "total": 144,
+    "commodities": [
+      "copper",
+      "corn",
+      "crude_oil_brent",
+      "crude_oil_wti",
+      "gold",
+      "natural_gas",
+      "silver",
+      "wheat"
+    ],
+    "split": {
+      "train": {
+        "count": 61,
+        "date_min": "2018-01-31",
+        "date_max": "2021-11-26"
+      },
+      "calibration": {
+        "count": 26,
+        "date_min": "2022-02-24",
+        "date_max": "2022-12-14"
+      },
+      "test": {
+        "count": 57,
+        "date_min": "2023-01-09",
+        "date_max": "2024-12-18"
+      }
+    }
+  },
+  "methods": {
+    "baseline:random": {
+      "kind": "baseline",
+      "metrics_test": {
+        "d1": {
+          "count": 57,
+          "evaluable_market": 57,
+          "accuracy_vs_label": {
+            "point": 0.3157894736842105,
+            "ci95_low": 0.19298245614035087,
+            "ci95_high": 0.43859649122807015
+          },
+          "accuracy_vs_market": {
+            "point": 0.21052631578947367,
+            "ci95_low": 0.10526315789473684,
+            "ci95_high": 0.3157894736842105
+          }
+        },
+        "d3": {
+          "count": 57,
+          "evaluable_market": 57,
+          "accuracy_vs_label": {
+            "point": 0.3157894736842105,
+            "ci95_low": 0.19298245614035087,
+            "ci95_high": 0.43859649122807015
+          },
+          "accuracy_vs_market": {
+            "point": 0.3684210526315789,
+            "ci95_low": 0.2631578947368421,
+            "ci95_high": 0.49122807017543857
+          }
+        },
+        "d7": {
+          "count": 57,
+          "evaluable_market": 57,
+          "accuracy_vs_label": {
+            "point": 0.3157894736842105,
+            "ci95_low": 0.19298245614035087,
+            "ci95_high": 0.43859649122807015
+          },
+          "accuracy_vs_market": {
+            "point": 0.24561403508771928,
+            "ci95_low": 0.12280701754385964,
+            "ci95_high": 0.3684210526315789
+          }
+        },
+        "d14": {
+          "count": 57,
+          "evaluable_market": 57,
+          "accuracy_vs_label": {
+            "point": 0.3157894736842105,
+            "ci95_low": 0.19298245614035087,
+            "ci95_high": 0.43859649122807015
+          },
+          "accuracy_vs_market": {
+            "point": 0.38596491228070173,
+            "ci95_low": 0.2631578947368421,
+            "ci95_high": 0.5087719298245614
+          }
+        },
+        "d30": {
+          "count": 57,
+          "evaluable_market": 57,
+          "accuracy_vs_label": {
+            "point": 0.3157894736842105,
+            "ci95_low": 0.19298245614035087,
+            "ci95_high": 0.43859649122807015
+          },
+          "accuracy_vs_market": {
+            "point": 0.3333333333333333,
+            "ci95_low": 0.22807017543859648,
+            "ci95_high": 0.45614035087719296
+          }
+        }
+      }
+    },
+    "baseline:always_bullish": {
+      "kind": "baseline",
+      "metrics_test": {
+        "d1": {
+          "count": 57,
+          "evaluable_market": 57,
+          "accuracy_vs_label": {
+            "point": 0.7192982456140351,
+            "ci95_low": 0.6140350877192983,
+            "ci95_high": 0.8421052631578947
+          },
+          "accuracy_vs_market": {
+            "point": 0.2807017543859649,
+            "ci95_low": 0.17543859649122806,
+            "ci95_high": 0.40350877192982454
+          }
+        },
+        "d3": {
+          "count": 57,
+          "evaluable_market": 57,
+          "accuracy_vs_label": {
+            "point": 0.7192982456140351,
+            "ci95_low": 0.6140350877192983,
+            "ci95_high": 0.8421052631578947
+          },
+          "accuracy_vs_market": {
+            "point": 0.3333333333333333,
+            "ci95_low": 0.21052631578947367,
+            "ci95_high": 0.45614035087719296
+          }
+        },
+        "d7": {
+          "count": 57,
+          "evaluable_market": 57,
+          "accuracy_vs_label": {
+            "point": 0.7192982456140351,
+            "ci95_low": 0.6140350877192983,
+            "ci95_high": 0.8421052631578947
+          },
+          "accuracy_vs_market": {
+            "point": 0.47368421052631576,
+            "ci95_low": 0.3508771929824561,
+            "ci95_high": 0.6140350877192983
+          }
+        },
+        "d14": {
+          "count": 57,
+          "evaluable_market": 57,
+          "accuracy_vs_label": {
+            "point": 0.7192982456140351,
+            "ci95_low": 0.6140350877192983,
+            "ci95_high": 0.8421052631578947
+          },
+          "accuracy_vs_market": {
+            "point": 0.43859649122807015,
+            "ci95_low": 0.3157894736842105,
+            "ci95_high": 0.5789473684210527
+          }
+        },
+        "d30": {
+          "count": 57,
+          "evaluable_market": 57,
+          "accuracy_vs_label": {
+            "point": 0.7192982456140351,
+            "ci95_low": 0.6140350877192983,
+            "ci95_high": 0.8421052631578947
+          },
+          "accuracy_vs_market": {
+            "point": 0.49122807017543857,
+            "ci95_low": 0.3684210526315789,
+            "ci95_high": 0.6140350877192983
+          }
+        }
+      }
+    },
+    "baseline:keyword": {
+      "kind": "baseline",
+      "metrics_test": {
+        "d1": {
+          "count": 57,
+          "evaluable_market": 57,
+          "accuracy_vs_label": {
+            "point": 0.43859649122807015,
+            "ci95_low": 0.3157894736842105,
+            "ci95_high": 0.5789473684210527
+          },
+          "accuracy_vs_market": {
+            "point": 0.3157894736842105,
+            "ci95_low": 0.19298245614035087,
+            "ci95_high": 0.43859649122807015
+          }
+        },
+        "d3": {
+          "count": 57,
+          "evaluable_market": 57,
+          "accuracy_vs_label": {
+            "point": 0.43859649122807015,
+            "ci95_low": 0.3157894736842105,
+            "ci95_high": 0.5789473684210527
+          },
+          "accuracy_vs_market": {
+            "point": 0.2807017543859649,
+            "ci95_low": 0.17543859649122806,
+            "ci95_high": 0.40350877192982454
+          }
+        },
+        "d7": {
+          "count": 57,
+          "evaluable_market": 57,
+          "accuracy_vs_label": {
+            "point": 0.43859649122807015,
+            "ci95_low": 0.3157894736842105,
+            "ci95_high": 0.5789473684210527
+          },
+          "accuracy_vs_market": {
+            "point": 0.2631578947368421,
+            "ci95_low": 0.15789473684210525,
+            "ci95_high": 0.38596491228070173
+          }
+        },
+        "d14": {
+          "count": 57,
+          "evaluable_market": 57,
+          "accuracy_vs_label": {
+            "point": 0.43859649122807015,
+            "ci95_low": 0.3157894736842105,
+            "ci95_high": 0.5789473684210527
+          },
+          "accuracy_vs_market": {
+            "point": 0.3157894736842105,
+            "ci95_low": 0.19298245614035087,
+            "ci95_high": 0.45614035087719296
+          }
+        },
+        "d30": {
+          "count": 57,
+          "evaluable_market": 57,
+          "accuracy_vs_label": {
+            "point": 0.43859649122807015,
+            "ci95_low": 0.3157894736842105,
+            "ci95_high": 0.5789473684210527
+          },
+          "accuracy_vs_market": {
+            "point": 0.2982456140350877,
+            "ci95_low": 0.17543859649122806,
+            "ci95_high": 0.42105263157894735
+          }
+        }
+      }
+    }
+  },
+  "comparisons": {},
+  "confusion_matrix_llm": null,
+  "calibration": null,
+  "per_commodity": {
+    "keyword": {
+      "copper": {
+        "count": 7,
+        "correct": 1,
+        "accuracy": 0.14285714285714285
+      },
+      "corn": {
+        "count": 3,
+        "correct": 0,
+        "accuracy": 0.0
+      },
+      "crude_oil_brent": {
+        "count": 8,
+        "correct": 5,
+        "accuracy": 0.625
+      },
+      "crude_oil_wti": {
+        "count": 6,
+        "correct": 3,
+        "accuracy": 0.5
+      },
+      "gold": {
+        "count": 25,
+        "correct": 6,
+        "accuracy": 0.24
+      },
+      "natural_gas": {
+        "count": 2,
+        "correct": 0,
+        "accuracy": 0.0
+      },
+      "silver": {
+        "count": 3,
+        "correct": 0,
+        "accuracy": 0.0
+      },
+      "wheat": {
+        "count": 3,
+        "correct": 0,
+        "accuracy": 0.0
+      }
+    }
+  },
+  "pnl": []
+}
