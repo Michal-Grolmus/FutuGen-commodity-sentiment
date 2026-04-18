@@ -826,5 +826,21 @@ async function pollStats() {
 }
 setInterval(pollStats, 3000);
 
+async function pollBacktest() {
+  const stats = await fetchJSON("/api/backtest/stats");
+  if (!stats || !stats.by_timeframe) return;
+  const set = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
+  const short = stats.by_timeframe.short_term || {};
+  const med = stats.by_timeframe.medium_term || {};
+  const shortEvald = (short.total || 0) - (short.pending || 0);
+  const medEvald = (med.total || 0) - (med.pending || 0);
+  set("bt-short", `${short.correct || 0} / ${shortEvald}`);
+  set("bt-medium", `${med.correct || 0} / ${medEvald}`);
+  set("bt-pending", (short.pending || 0) + (med.pending || 0));
+  set("bt-overall", stats.accuracy !== null ? `${Math.round(stats.accuracy * 100)}%` : "--");
+}
+setInterval(pollBacktest, 10000);
+pollBacktest();
+
 // ===== START =====
 init();

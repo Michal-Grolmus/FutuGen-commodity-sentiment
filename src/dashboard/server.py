@@ -282,6 +282,19 @@ def create_app(broadcaster: SignalBroadcaster | None = None) -> FastAPI:
     async def get_heatmap() -> dict[str, dict[str, object]]:
         return _broadcaster.get_heatmap()
 
+    @app.get("/api/backtest/stats")
+    async def backtest_stats() -> dict[str, object]:
+        """Aggregate backtest accuracy from signal log, grouped by timeframe."""
+        from src.backtest import signal_log
+        return signal_log.compute_stats()
+
+    @app.get("/api/backtest/log")
+    async def backtest_log(limit: int = 50) -> list[dict[str, object]]:
+        """Recent signal log entries (with backtest results if available)."""
+        from src.backtest import signal_log
+        entries = signal_log.read_all()
+        return entries[-limit:]
+
     @app.get("/api/streams")
     async def get_streams() -> list[dict[str, str]]:
         """Return curated list of commodity news streams."""

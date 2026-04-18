@@ -91,6 +91,14 @@
         <div class="stat-item"><span class="stat-label">Signals</span><span class="stat-value" id="stat-signals-val">0</span></div>
         <div class="stat-item"><span class="stat-label">API cost</span><span class="stat-value" id="stat-cost-val">$0.0000</span></div>
       </div>
+
+      <!-- Backtest accuracy widget -->
+      <div id="backtest-widget" class="stats-widget" title="Signals persisted to data/signals_log.jsonl are re-checked after 24h (short_term) or 7d (medium_term)">
+        <div class="stat-item"><span class="stat-label">Backtest (short-term 24h)</span><span class="stat-value" id="bt-short">-- / --</span></div>
+        <div class="stat-item"><span class="stat-label">Backtest (medium-term 7d)</span><span class="stat-value" id="bt-medium">-- / --</span></div>
+        <div class="stat-item"><span class="stat-label">Pending</span><span class="stat-value" id="bt-pending">0</span></div>
+        <div class="stat-item"><span class="stat-label">Overall accuracy</span><span class="stat-value" id="bt-overall">--</span></div>
+      </div>
       <div id="streams-list"></div>
       <div id="no-streams" class="empty-state">No active streams. <a href="#" onclick="showOnboarding()">Add one &rarr;</a></div>
     </div>

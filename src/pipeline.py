@@ -116,11 +116,13 @@ class Pipeline:
         logger.info("Pipeline starting...")
 
         try:
+            from src.backtest.runner import run_loop as backtest_run_loop
             tasks = [
                 asyncio.create_task(self._ingest_loop(), name="ingest"),
                 asyncio.create_task(self._transcribe_loop(), name="transcribe"),
                 asyncio.create_task(self._analyze_loop(), name="analyze"),
                 asyncio.create_task(self._broadcast_loop(), name="broadcast"),
+                asyncio.create_task(backtest_run_loop(), name="backtest"),
             ]
             await asyncio.wait_for(
                 asyncio.gather(*tasks, return_exceptions=True),
@@ -214,6 +216,7 @@ class Pipeline:
         logger.info("Analysis finished.")
 
     async def _broadcast_loop(self) -> None:
+        from src.backtest import signal_log
         while self._running:
             result = await self._scoring_q.get()
             if result is None:
@@ -226,6 +229,24 @@ class Pipeline:
                 ))
                 if self._terminal:
                     self._terminal.update(result)
+
+                # Persist each signal with price snapshot for delayed backtesting
+                stream_id = self._settings.input_file or self._settings.stream_url or "pipeline"
+                for sig in result.signals:
+                    price_snapshot: float | None = None
+                    if self._price_client is not None:
+                        try:
+                            price_snapshot = self._price_client.get_current_price(sig.commodity)
+                        except Exception:
+                            price_snapshot = None
+                    try:
+                        signal_log.append(
+                            sig, stream_id=stream_id,
+                            chunk_id=result.chunk_id,
+                            price_snapshot=price_snapshot,
+                        )
+                    except Exception:
+                        logger.exception("Failed to log signal %s", sig.commodity)
 
                 # Bonus: send Slack notifications for high-confidence signals
                 if self._notifier:
