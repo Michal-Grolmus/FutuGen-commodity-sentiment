@@ -19,10 +19,30 @@
       <div class="onboard-section">
         <h3>2. Or connect your API key</h3>
         <div class="key-input-row">
-          <input id="api-key-input" type="password" placeholder="sk-ant-..." />
+          <input id="api-key-input" type="password" placeholder="sk-ant-... or gsk-... or AIza..." />
           <button onclick="saveApiKey()" class="btn-primary">Save</button>
         </div>
-        <a href="https://console.anthropic.com/settings/keys" target="_blank" class="link">Get an API key &rarr;</a>
+
+        <p class="hint" style="margin-top:0.75rem">Free API options (no credit card needed):</p>
+        <div class="provider-grid">
+          <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener" class="provider-card">
+            <div class="provider-name">Google Gemini <span class="provider-tag best">most generous</span></div>
+            <div class="provider-limits">1,500 req/day · Gemini 2.5 Flash</div>
+          </a>
+          <a href="https://console.groq.com/keys" target="_blank" rel="noopener" class="provider-card">
+            <div class="provider-name">Groq <span class="provider-tag fast">fastest</span></div>
+            <div class="provider-limits">1,000 req/day · 300+ tok/s · Llama 3.3 70B</div>
+          </a>
+          <a href="https://console.mistral.ai/api-keys" target="_blank" rel="noopener" class="provider-card">
+            <div class="provider-name">Mistral La Plateforme</div>
+            <div class="provider-limits">~86k req/day · 500k tok/min · Mistral Small</div>
+          </a>
+          <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener" class="provider-card">
+            <div class="provider-name">Anthropic Claude <span class="provider-tag quality">best quality</span></div>
+            <div class="provider-limits">$5 free credit · Haiku 4.5 recommended for this app</div>
+          </a>
+        </div>
+        <p class="hint" style="font-size:0.72rem;margin-top:0.5rem">The app uses Anthropic SDK by default. For other providers, see <code>docs/TESTING_GUIDE.md</code>.</p>
       </div>
       <div class="onboard-section">
         <h3>3. Or go straight to the dashboard</h3>
