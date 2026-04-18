@@ -4,7 +4,10 @@ services:
     ports:
       - "8000:8000"
     env_file:
-      - .env
+      - path: .env
+        required: false
+    environment:
+      - DASHBOARD_HOST=0.0.0.0
     volumes:
       - ./audio_samples:/app/audio_samples
       - ./evaluation:/app/evaluation
