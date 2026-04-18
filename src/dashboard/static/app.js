@@ -72,20 +72,14 @@ function showView(view) {
   document.getElementById("view-commodities").classList.toggle("hidden", view !== "commodities");
   document.getElementById("nav-streams").classList.toggle("active", view === "streams");
   document.getElementById("nav-commodities").classList.toggle("active", view === "commodities");
-  document.getElementById("sub-nav-streams").classList.toggle("hidden", view !== "streams");
-  document.getElementById("sub-nav-commodities").classList.toggle("hidden", view !== "commodities");
-  document.getElementById("filters-streams").classList.toggle("hidden", view !== "streams");
-  document.getElementById("filters-commodities").classList.toggle("hidden", view !== "commodities");
 
   if (view === "commodities") {
     renderCommodityFilters();
-    renderCommodityNav();
     renderLatestEvents();
     renderCommodities();
   }
   if (view === "streams") {
     renderStreamFilters();
-    renderStreamNav();
     renderStreams();
   }
 }
@@ -161,52 +155,22 @@ function renderStreamFilters() {
   panel.innerHTML = html;
 }
 
-function renderStreamNav() {
-  const nav = document.getElementById("sub-nav-streams");
-  const ids = Object.keys(streams);
-  if (ids.length === 0) { nav.innerHTML = ""; return; }
-  let html = "";
-  for (const id of ids) {
-    const s = streams[id];
-    const cls = selectedStreamIds.has(id) ? "" : "inactive";
-    html += `<button class="sub-nav-btn ${cls}" onclick="focusStream('${escapeHtml(id)}')">${escapeHtml(s.name)}</button>`;
-  }
-  nav.innerHTML = html;
-}
-
-function focusStream(id) {
-  if (!selectedStreamIds.has(id)) {
-    selectedStreamIds.add(id);
-    renderStreamFilters();
-    renderStreamNav();
-    renderStreams();
-  }
-  // Scroll to the stream card after DOM is ready
-  setTimeout(() => {
-    const el = document.getElementById(`stream-card-${id}`);
-    if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
-  }, 50);
-}
-
 function toggleStream(id) {
   if (selectedStreamIds.has(id)) selectedStreamIds.delete(id);
   else selectedStreamIds.add(id);
   renderStreamFilters();
-  renderStreamNav();
   renderStreams();
 }
 
 function selectAllStreams() {
   for (const id of Object.keys(streams)) selectedStreamIds.add(id);
   renderStreamFilters();
-  renderStreamNav();
   renderStreams();
 }
 
 function deselectAllStreams() {
   selectedStreamIds.clear();
   renderStreamFilters();
-  renderStreamNav();
   renderStreams();
 }
 
@@ -267,35 +231,10 @@ function renderCommodityFilters() {
   panel.innerHTML = html;
 }
 
-function renderCommodityNav() {
-  const nav = document.getElementById("sub-nav-commodities");
-  let html = "";
-  for (const [id, c] of Object.entries(commodities)) {
-    const cls = selectedCommodityIds.has(id) ? "" : "inactive";
-    html += `<button class="sub-nav-btn ${cls}" onclick="focusCommodity('${id}')">${escapeHtml(COMMODITY_SHORT[id])}</button>`;
-  }
-  nav.innerHTML = html;
-}
-
-function focusCommodity(id) {
-  if (!selectedCommodityIds.has(id)) {
-    selectedCommodityIds.add(id);
-    renderCommodityFilters();
-    renderCommodityNav();
-    renderLatestEvents();
-    renderCommodities();
-  }
-  setTimeout(() => {
-    const el = document.getElementById(`commodity-card-${id}`);
-    if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
-  }, 50);
-}
-
 function toggleCommodityFilter(id) {
   if (selectedCommodityIds.has(id)) selectedCommodityIds.delete(id);
   else selectedCommodityIds.add(id);
   renderCommodityFilters();
-  renderCommodityNav();
   renderLatestEvents();
   renderCommodities();
 }
@@ -303,7 +242,6 @@ function toggleCommodityFilter(id) {
 function selectAllCommodities() {
   for (const id of Object.keys(commodities)) selectedCommodityIds.add(id);
   renderCommodityFilters();
-  renderCommodityNav();
   renderLatestEvents();
   renderCommodities();
 }
@@ -311,7 +249,6 @@ function selectAllCommodities() {
 function deselectAllCommodities() {
   selectedCommodityIds.clear();
   renderCommodityFilters();
-  renderCommodityNav();
   renderLatestEvents();
   renderCommodities();
 }
@@ -438,7 +375,7 @@ function connect(endpoint) {
     const streamId = event.stream_id || Object.keys(streams)[0];
     if (!streams[streamId]) addStream(streamId, streamId, "demo");
     streams[streamId].transcript = t.full_text;
-    renderStreamFilters(); renderStreamNav();
+    renderStreamFilters();
     if (!document.getElementById("view-streams").classList.contains("hidden")) {
       const el = document.getElementById(`transcript-${streamId}`);
       if (el) el.textContent = t.full_text;
@@ -464,8 +401,8 @@ function connect(endpoint) {
       }
     }
 
-    renderStreamFilters(); renderStreamNav();
-    renderCommodityFilters(); renderCommodityNav();
+    renderStreamFilters();
+    renderCommodityFilters();
 
     if (!document.getElementById("view-streams").classList.contains("hidden")) renderStreams();
     if (!document.getElementById("view-commodities").classList.contains("hidden")) {
