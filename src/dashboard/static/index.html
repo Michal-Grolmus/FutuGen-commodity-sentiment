@@ -25,22 +25,32 @@
         <a href="https://console.anthropic.com/settings/keys" target="_blank" class="link">Get an API key &rarr;</a>
       </div>
       <div class="onboard-section">
-        <h3>3. Add a stream source</h3>
+        <h3>3. Pick a live stream or sample</h3>
         <div id="stream-picker"></div>
+        <div class="custom-url-row">
+          <input id="custom-url" type="text" placeholder="Or paste a YouTube Live URL..." />
+          <button onclick="addCustomStream()" class="btn-primary">Add</button>
+        </div>
       </div>
     </div>
   </div>
 
   <!-- MAIN APP -->
   <div id="app" class="hidden">
-    <!-- NAV -->
-    <nav>
+    <!-- TOP NAV (sticky) -->
+    <nav class="top-nav">
       <h1>CSM</h1>
       <button id="nav-streams" class="nav-btn active" onclick="showView('streams')">Streams</button>
       <button id="nav-commodities" class="nav-btn" onclick="showView('commodities')">Commodities</button>
       <div class="nav-spacer"></div>
       <span id="nav-status" class="status-connecting">...</span>
     </nav>
+
+    <!-- SUB-NAV (sticky) -->
+    <div id="sub-nav" class="sub-nav">
+      <div id="sub-nav-streams" class="sub-nav-content"></div>
+      <div id="sub-nav-commodities" class="sub-nav-content hidden"></div>
+    </div>
 
     <!-- STREAMS VIEW -->
     <div id="view-streams" class="view">
@@ -57,6 +67,14 @@
       <div class="view-header">
         <h2>Commodities</h2>
       </div>
+
+      <!-- Latest Events section -->
+      <section id="latest-events-section">
+        <h3 class="section-title">Latest Events</h3>
+        <div id="latest-events-grid"></div>
+      </section>
+
+      <!-- Full commodity list -->
       <div id="commodities-grid"></div>
     </div>
   </div>

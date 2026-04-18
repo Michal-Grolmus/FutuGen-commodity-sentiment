@@ -29,15 +29,27 @@ MAX_SUBSCRIBERS = 50
 
 CURATED_STREAMS = [
     {
-        "name": "Bloomberg Commodities",
+        "name": "Bloomberg Business News Live",
         "url": "https://www.youtube.com/watch?v=iEpJwprxDdk",
-        "description": "Bloomberg Business News — live market coverage",
+        "description": "Bloomberg 24/7 live market coverage",
         "type": "live",
     },
     {
-        "name": "CNBC Markets",
-        "url": "https://www.youtube.com/watch?v=gMbQ5IaF0hg",
-        "description": "CNBC live business news — commodity analysis",
+        "name": "Bloomberg Originals",
+        "url": "https://www.youtube.com/watch?v=DxmDPrfinXY",
+        "description": "News, documentaries & more",
+        "type": "live",
+    },
+    {
+        "name": "Yahoo Finance Live",
+        "url": "https://www.youtube.com/watch?v=KQp-e_XQnDE",
+        "description": "Yahoo Finance 24/7 daily market coverage",
+        "type": "live",
+    },
+    {
+        "name": "CNBC Marathon",
+        "url": "https://www.youtube.com/watch?v=9NyxcX3rhQs",
+        "description": "CNBC Marathon 24/7 — documentaries and deep dives",
         "type": "live",
     },
     {
@@ -281,7 +293,26 @@ def create_app(broadcaster: SignalBroadcaster | None = None) -> FastAPI:
 
     @app.get("/api/demo")
     async def demo_stream(request: Request) -> EventSourceResponse:
-        """Stream saved evaluation results as live demo (no API key needed)."""
+        """Stream saved evaluation results as live demo (no API key needed).
+
+        Distributes events across 3 simulated streams to show multi-stream behavior.
+        """
+
+        # Assign each excerpt to one of 3 streams (by topic)
+        stream_map = {
+            "opec_01": "Bloomberg Live",
+            "inventory_01": "Bloomberg Live",
+            "geopolitical_01": "Bloomberg Live",
+            "sanctions_01": "Bloomberg Live",
+            "mining_01": "Bloomberg Live",
+            "fed_01": "CNBC Markets",
+            "fed_02": "CNBC Markets",
+            "inflation_01": "CNBC Markets",
+            "mixed_01": "CNBC Markets",
+            "weather_01": "Yahoo Finance",
+            "china_01": "Yahoo Finance",
+            "neutral_01": "Yahoo Finance",
+        }
 
         async def generate() -> AsyncGenerator[dict[str, str], None]:
             predictions_path = PROJECT_ROOT / "evaluation" / "results" / "predictions.json"
@@ -299,14 +330,15 @@ def create_app(broadcaster: SignalBroadcaster | None = None) -> FastAPI:
                 gt = pred.get("ground_truth", {})
                 signals = pred.get("predicted_signals", [])
                 eid = pred.get("excerpt_id", "demo")
+                stream_id = stream_map.get(eid, "Bloomberg Live")
 
-                # Send transcript first
                 text = gt.get("transcript_text", gt.get("description", ""))
                 if text:
                     yield {
                         "event": "transcript",
                         "data": json.dumps({
                             "event_type": "transcript", "chunk_id": eid,
+                            "stream_id": stream_id,
                             "timestamp": "2025-01-01T00:00:00Z",
                             "transcript": {
                                 "chunk_id": eid, "language": "en",
@@ -318,12 +350,12 @@ def create_app(broadcaster: SignalBroadcaster | None = None) -> FastAPI:
 
                 await asyncio.sleep(1.0)
 
-                # Then send signals
                 if signals:
                     yield {
                         "event": "signal",
                         "data": json.dumps({
                             "event_type": "signal", "chunk_id": eid,
+                            "stream_id": stream_id,
                             "timestamp": "2025-01-01T00:00:00Z",
                             "scoring": {
                                 "chunk_id": eid, "signals": signals,
