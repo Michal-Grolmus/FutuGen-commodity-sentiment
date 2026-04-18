@@ -38,10 +38,25 @@ function persistSavedStreams(list) {
 let savedStreams = loadSavedStreams();
 
 // Commodity data: { commodityId: { display_name, short_name, events[] } }
-// Loaded from /api/commodities at init
+const DEFAULT_COMMODITIES = {
+  crude_oil_wti: { display_name: "WTI Crude Oil", short_name: "WTI" },
+  crude_oil_brent: { display_name: "Brent Crude Oil", short_name: "Brent" },
+  natural_gas: { display_name: "Natural Gas", short_name: "Nat Gas" },
+  gold: { display_name: "Gold", short_name: "Gold" },
+  silver: { display_name: "Silver", short_name: "Silver" },
+  wheat: { display_name: "Wheat", short_name: "Wheat" },
+  corn: { display_name: "Corn", short_name: "Corn" },
+  copper: { display_name: "Copper", short_name: "Copper" },
+};
 const commodities = {};
+// Seed with defaults synchronously so UI works even if /api/commodities 404s
+for (const [id, c] of Object.entries(DEFAULT_COMMODITIES)) {
+  commodities[id] = { display_name: c.display_name, short_name: c.short_name, events: [] };
+  selectedCommodityIds.add(id);
+}
 
 async function loadCommodities() {
+  // Refresh from backend registry (adds custom commodities; keeps defaults)
   const list = await fetchJSON("/api/commodities");
   if (!Array.isArray(list)) return;
   for (const c of list) {
@@ -51,15 +66,7 @@ async function loadCommodities() {
         short_name: c.display_name.length > 12 ? c.display_name.split(" ")[0] : c.display_name,
         events: [],
       };
-      selectedCommodityIds.add(c.name);  // auto-select new commodities
-    }
-  }
-  // Remove commodities that no longer exist in backend
-  const validNames = new Set(list.map(c => c.name));
-  for (const id of Object.keys(commodities)) {
-    if (!validNames.has(id)) {
-      delete commodities[id];
-      selectedCommodityIds.delete(id);
+      selectedCommodityIds.add(c.name);
     }
   }
 }
