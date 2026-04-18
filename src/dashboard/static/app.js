@@ -1,8 +1,10 @@
 // ===== STATE =====
 let activeSSE = null;
 let isDemoMode = false;
-let selectedStreamId = null;     // for stream sub-nav filter
-let selectedCommodityId = null;  // for commodity sub-nav filter
+
+// Multi-select filters (Set of IDs); empty set = nothing selected
+const selectedStreamIds = new Set();
+const selectedCommodityIds = new Set();
 
 // Stream data: { streamId: { name, url, type, transcript, signals[] } }
 const streams = {};
@@ -20,6 +22,7 @@ const COMMODITY_SHORT = {
 const commodities = {};
 for (const [id, name] of Object.entries(COMMODITY_NAMES_FULL)) {
   commodities[id] = { display_name: name, events: [] };
+  selectedCommodityIds.add(id);  // default: all selected
 }
 
 // ===== INIT =====
@@ -131,8 +134,8 @@ function startDemo() {
 function addStream(id, url, type) {
   if (!streams[id]) {
     streams[id] = { name: id, url, type, transcript: "", signals: [] };
+    selectedStreamIds.add(id);  // auto-select new streams
   }
-  if (!selectedStreamId) selectedStreamId = id;
 }
 
 function renderStreamSubNav() {
@@ -142,16 +145,33 @@ function renderStreamSubNav() {
     nav.innerHTML = '<span style="color:#c9d1d9;font-size:0.78rem">No streams yet</span>';
     return;
   }
-  nav.innerHTML = `<button class="sub-nav-btn ${selectedStreamId === '__all__' ? 'active' : ''}" onclick="selectStream('__all__')">All <span class="count">${ids.length}</span></button>`;
+  const allSelected = ids.every(id => selectedStreamIds.has(id));
+  const toggleLabel = allSelected ? "Deselect All" : "Select All";
+  const toggleAction = allSelected ? "deselectAllStreams()" : "selectAllStreams()";
+  let html = `<button class="sub-nav-btn toggle-all" onclick="${toggleAction}">${toggleLabel}</button>`;
   for (const id of ids) {
     const s = streams[id];
-    const cls = selectedStreamId === id ? "active" : "";
-    nav.innerHTML += `<button class="sub-nav-btn ${cls}" onclick="selectStream('${escapeHtml(id)}')">${escapeHtml(s.name)} <span class="count">${s.signals.length}</span></button>`;
+    const cls = selectedStreamIds.has(id) ? "active" : "";
+    html += `<button class="sub-nav-btn ${cls}" onclick="toggleStream('${escapeHtml(id)}')">${escapeHtml(s.name)} <span class="count">${s.signals.length}</span></button>`;
   }
+  nav.innerHTML = html;
 }
 
-function selectStream(id) {
-  selectedStreamId = id;
+function toggleStream(id) {
+  if (selectedStreamIds.has(id)) selectedStreamIds.delete(id);
+  else selectedStreamIds.add(id);
+  renderStreamSubNav();
+  renderStreams();
+}
+
+function selectAllStreams() {
+  for (const id of Object.keys(streams)) selectedStreamIds.add(id);
+  renderStreamSubNav();
+  renderStreams();
+}
+
+function deselectAllStreams() {
+  selectedStreamIds.clear();
   renderStreamSubNav();
   renderStreams();
 }
@@ -163,9 +183,11 @@ function renderStreams() {
   noStreams.classList.toggle("hidden", keys.length > 0);
   container.innerHTML = "";
 
-  const toRender = (selectedStreamId === "__all__" || !selectedStreamId)
-    ? keys
-    : keys.filter(id => id === selectedStreamId);
+  const toRender = keys.filter(id => selectedStreamIds.has(id));
+  if (keys.length > 0 && toRender.length === 0) {
+    container.innerHTML = '<div class="empty-state">No streams selected. Click <strong>Select All</strong> or individual streams in the top menu.</div>';
+    return;
+  }
 
   for (const id of toRender) {
     const s = streams[id];
@@ -198,16 +220,37 @@ function toggleStreamSignals(id) {
 // ===== COMMODITY VIEW =====
 function renderCommoditySubNav() {
   const nav = document.getElementById("sub-nav-commodities");
-  nav.innerHTML = `<button class="sub-nav-btn ${selectedCommodityId === null ? 'active' : ''}" onclick="selectCommodity(null)">All</button>`;
+  const ids = Object.keys(commodities);
+  const allSelected = ids.every(id => selectedCommodityIds.has(id));
+  const toggleLabel = allSelected ? "Deselect All" : "Select All";
+  const toggleAction = allSelected ? "deselectAllCommodities()" : "selectAllCommodities()";
+  let html = `<button class="sub-nav-btn toggle-all" onclick="${toggleAction}">${toggleLabel}</button>`;
   for (const [id, c] of Object.entries(commodities)) {
-    const cls = selectedCommodityId === id ? "active" : "";
-    nav.innerHTML += `<button class="sub-nav-btn ${cls}" onclick="selectCommodity('${id}')">${escapeHtml(COMMODITY_SHORT[id])} <span class="count">${c.events.length}</span></button>`;
+    const cls = selectedCommodityIds.has(id) ? "active" : "";
+    html += `<button class="sub-nav-btn ${cls}" onclick="toggleCommodityFilter('${id}')">${escapeHtml(COMMODITY_SHORT[id])} <span class="count">${c.events.length}</span></button>`;
   }
+  nav.innerHTML = html;
 }
 
-function selectCommodity(id) {
-  selectedCommodityId = id;
+function toggleCommodityFilter(id) {
+  if (selectedCommodityIds.has(id)) selectedCommodityIds.delete(id);
+  else selectedCommodityIds.add(id);
   renderCommoditySubNav();
+  renderLatestEvents();
+  renderCommodities();
+}
+
+function selectAllCommodities() {
+  for (const id of Object.keys(commodities)) selectedCommodityIds.add(id);
+  renderCommoditySubNav();
+  renderLatestEvents();
+  renderCommodities();
+}
+
+function deselectAllCommodities() {
+  selectedCommodityIds.clear();
+  renderCommoditySubNav();
+  renderLatestEvents();
   renderCommodities();
 }
 
@@ -215,9 +258,10 @@ function renderLatestEvents() {
   const grid = document.getElementById("latest-events-grid");
   if (!grid) return;
 
-  // Collect all events from all commodities, pick 3 with most recent timestamp
+  // Collect latest event per SELECTED commodity, pick 3 with most recent timestamp
   const allEvents = [];
   for (const [id, c] of Object.entries(commodities)) {
+    if (!selectedCommodityIds.has(id)) continue;
     if (c.events.length > 0) {
       const latest = c.events[c.events.length - 1];
       allEvents.push({ ...latest, _cid: id, _time: latest._time || "just now" });
@@ -252,9 +296,11 @@ function renderCommodities() {
   if (!grid) return;
   grid.innerHTML = "";
 
-  const toRender = selectedCommodityId === null
-    ? Object.keys(commodities)
-    : [selectedCommodityId];
+  const toRender = Object.keys(commodities).filter(id => selectedCommodityIds.has(id));
+  if (toRender.length === 0) {
+    grid.innerHTML = '<div class="empty-state">No commodities selected. Click <strong>Select All</strong> or individual commodities in the top menu.</div>';
+    return;
+  }
 
   for (const id of toRender) {
     const c = commodities[id];
