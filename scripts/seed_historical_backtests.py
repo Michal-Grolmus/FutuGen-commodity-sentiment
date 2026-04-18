@@ -393,6 +393,165 @@ HISTORICAL_EVENTS = [
                        "triggering trade retaliation fears.",
         "event_name": "trump_tariffs_corn",
     },
+    # --- 2018-2019 ---
+    {
+        "date": "2018-07-06", "commodity": "corn",
+        "direction": "bearish", "confidence": 0.55, "timeframe": "medium_term",
+        "rationale": "US-China trade war escalation. China applies retaliatory tariffs on US agriculture.",
+        "source_text": "China imposed 25% retaliatory tariffs on US agricultural products including corn.",
+        "event_name": "china_tariffs_corn_2018",
+    },
+    {
+        "date": "2018-07-06", "commodity": "wheat",
+        "direction": "bearish", "confidence": 0.50, "timeframe": "medium_term",
+        "rationale": "US agricultural exports to China hit by tariffs; wheat demand weakens.",
+        "source_text": "China imposed 25% retaliatory tariffs on US agricultural products.",
+        "event_name": "china_tariffs_wheat_2018",
+    },
+    {
+        "date": "2019-09-16", "commodity": "crude_oil_brent",
+        "direction": "bullish", "confidence": 0.85, "timeframe": "short_term",
+        "rationale": "Drone attack on Saudi Abqaiq facility knocks out 5% of global oil supply.",
+        "source_text": "Drone attacks on Saudi Aramco's Abqaiq and Khurais facilities halted 5.7M bpd production.",
+        "event_name": "abqaiq_attack",
+    },
+    {
+        "date": "2019-01-28", "commodity": "crude_oil_brent",
+        "direction": "bullish", "confidence": 0.55, "timeframe": "medium_term",
+        "rationale": "US sanctions on Venezuelan PDVSA target heavy oil exports. Supply tightens.",
+        "source_text": "Trump administration imposed sanctions on Venezuelan state oil firm PDVSA.",
+        "event_name": "venezuela_sanctions_2019",
+    },
+    {
+        "date": "2019-08-01", "commodity": "silver",
+        "direction": "bullish", "confidence": 0.55, "timeframe": "medium_term",
+        "rationale": "Fed cuts rates first time since 2008. Lower yields support silver as monetary metal.",
+        "source_text": "The Federal Reserve cut its benchmark rate for the first time since the 2008 crisis.",
+        "event_name": "fed_aug2019_cut_silver",
+    },
+    # --- 2021 additional ---
+    {
+        "date": "2021-03-23", "commodity": "crude_oil_brent",
+        "direction": "bullish", "confidence": 0.55, "timeframe": "short_term",
+        "rationale": "Suez Canal blocked by Ever Given container ship. Global shipping disrupted.",
+        "source_text": "The Ever Given container ship ran aground blocking the Suez Canal entirely.",
+        "event_name": "suez_blockage",
+    },
+    {
+        "date": "2021-08-30", "commodity": "crude_oil_wti",
+        "direction": "bullish", "confidence": 0.60, "timeframe": "short_term",
+        "rationale": "Hurricane Ida shuts down ~95% of Gulf of Mexico offshore oil production.",
+        "source_text": "Hurricane Ida made landfall in Louisiana, shutting 95% of Gulf of Mexico oil output.",
+        "event_name": "hurricane_ida",
+    },
+    {
+        "date": "2021-10-27", "commodity": "copper",
+        "direction": "bullish", "confidence": 0.55, "timeframe": "short_term",
+        "rationale": "LME copper stockpiles plunge to 40-year lows. Supply squeeze concerns.",
+        "source_text": "LME copper stockpiles dropped to the lowest level since 1974.",
+        "event_name": "lme_copper_squeeze_oct2021",
+    },
+    # --- 2022 additional ---
+    {
+        "date": "2022-03-07", "commodity": "gold",
+        "direction": "bullish", "confidence": 0.70, "timeframe": "short_term",
+        "rationale": "Gold near all-time highs on Ukraine war safe-haven flows.",
+        "source_text": "Gold spiked near $2,050/oz as investors fled to safe havens amid Ukraine conflict.",
+        "event_name": "gold_ukraine_spike",
+    },
+    {
+        "date": "2022-05-04", "commodity": "gold",
+        "direction": "bearish", "confidence": 0.60, "timeframe": "short_term",
+        "rationale": "Fed 50bp hike, largest since 2000. Hawkish stance pressures gold.",
+        "source_text": "The Federal Reserve raised rates by 50 basis points, the largest hike since 2000.",
+        "event_name": "fed_may2022_50bp",
+    },
+    {
+        "date": "2022-06-24", "commodity": "copper",
+        "direction": "bearish", "confidence": 0.55, "timeframe": "medium_term",
+        "rationale": "Copper enters bear market. Recession fears weigh on industrial metals.",
+        "source_text": "LME copper entered a bear market, down 20% from March highs on recession fears.",
+        "event_name": "copper_bear_market",
+    },
+    {
+        "date": "2022-12-14", "commodity": "gold",
+        "direction": "bearish", "confidence": 0.55, "timeframe": "short_term",
+        "rationale": "Fed hikes 50bp, signals rates higher for longer despite slowing CPI.",
+        "source_text": "Fed raised rates 50bp and projected peak rate above 5% through 2023.",
+        "event_name": "fed_dec2022_hike",
+    },
+    # --- 2023 additional ---
+    {
+        "date": "2023-02-14", "commodity": "gold",
+        "direction": "bullish", "confidence": 0.50, "timeframe": "short_term",
+        "rationale": "CPI hotter than expected but core moderating. Mixed signal for gold.",
+        "source_text": "US CPI rose 6.4% YoY in January, slightly above the 6.2% consensus expectation.",
+        "event_name": "cpi_feb2023",
+    },
+    {
+        "date": "2023-08-07", "commodity": "wheat",
+        "direction": "bullish", "confidence": 0.55, "timeframe": "short_term",
+        "rationale": "Russia attacks Ukrainian Danube grain ports. Alternative export route at risk.",
+        "source_text": "Russian drones struck Ukrainian grain port infrastructure on the Danube river.",
+        "event_name": "danube_port_attack",
+    },
+    {
+        "date": "2023-10-17", "commodity": "crude_oil_brent",
+        "direction": "bullish", "confidence": 0.55, "timeframe": "short_term",
+        "rationale": "Israel-Hamas war escalates fears of regional spread. Iran involvement risk.",
+        "source_text": "Hezbollah tensions on Israel-Lebanon border threaten to widen Middle East conflict.",
+        "event_name": "israel_lebanon_tensions",
+    },
+    {
+        "date": "2023-11-16", "commodity": "corn",
+        "direction": "bearish", "confidence": 0.50, "timeframe": "medium_term",
+        "rationale": "USDA raises corn production forecast. Supply outlook improves.",
+        "source_text": "USDA raised the US corn production estimate to a record 15.234 billion bushels.",
+        "event_name": "usda_corn_record",
+    },
+    # --- 2024 additional ---
+    {
+        "date": "2024-01-12", "commodity": "crude_oil_brent",
+        "direction": "bullish", "confidence": 0.55, "timeframe": "short_term",
+        "rationale": "US and UK launch strikes on Houthi targets in Yemen. Red Sea shipping disrupted.",
+        "source_text": "US and UK launched airstrikes against Houthi targets in Yemen over Red Sea attacks.",
+        "event_name": "houthi_strikes",
+    },
+    {
+        "date": "2024-03-20", "commodity": "gold",
+        "direction": "bullish", "confidence": 0.55, "timeframe": "medium_term",
+        "rationale": "Fed holds rates, reaffirms 3 cuts projection for 2024. Dovish tone.",
+        "source_text": "Fed held rates steady and maintained median projection of 3 rate cuts in 2024.",
+        "event_name": "fed_mar2024_dovish",
+    },
+    {
+        "date": "2024-05-20", "commodity": "copper",
+        "direction": "bullish", "confidence": 0.60, "timeframe": "short_term",
+        "rationale": "Comex copper short squeeze drives prices to record. Supply tightness narrative.",
+        "source_text": "Comex copper surged to record highs as short sellers scrambled to cover positions.",
+        "event_name": "copper_short_squeeze_may2024",
+    },
+    {
+        "date": "2024-07-11", "commodity": "silver",
+        "direction": "bullish", "confidence": 0.55, "timeframe": "short_term",
+        "rationale": "Silver breaks above $31/oz on dovish Fed and solar demand outlook.",
+        "source_text": "Silver broke above $31/oz, approaching decade highs on industrial and monetary demand.",
+        "event_name": "silver_jul2024",
+    },
+    {
+        "date": "2024-09-24", "commodity": "copper",
+        "direction": "bullish", "confidence": 0.65, "timeframe": "medium_term",
+        "rationale": "China unveils comprehensive stimulus package. Major boost for industrial demand.",
+        "source_text": "PBOC announced rate cuts, RRR cuts, and housing support in largest stimulus since COVID.",
+        "event_name": "china_big_stimulus",
+    },
+    {
+        "date": "2024-12-18", "commodity": "gold",
+        "direction": "bearish", "confidence": 0.55, "timeframe": "short_term",
+        "rationale": "Fed signals slower rate cut pace for 2025. Hawkish surprise pressures gold.",
+        "source_text": "Fed cut rates 25bp but projected only 2 cuts in 2025, below prior 4-cut guidance.",
+        "event_name": "fed_dec2024_hawkish_cut",
+    },
 ]
 
 
@@ -481,6 +640,7 @@ def backtest_event(event: dict) -> dict | None:
 
     entry = {
         "id": f"hist_{event['event_name']}",
+        "source": "retrospective",
         "timestamp": event_ts.isoformat(),
         "stream_id": "historical_seed",
         "chunk_id": event["event_name"],

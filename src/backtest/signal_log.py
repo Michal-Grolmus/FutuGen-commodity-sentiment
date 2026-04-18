@@ -42,8 +42,14 @@ def append(
     stream_id: str,
     chunk_id: str,
     price_snapshot: float | None,
+    source: str = "live",
 ) -> str:
-    """Record a signal with price snapshot. Returns the log entry id."""
+    """Record a signal with price snapshot. Returns the log entry id.
+
+    source:
+      - "live": real-time signal from running pipeline
+      - "retrospective": seeded historical event (prediction made with hindsight)
+    """
     _ensure_dir()
     now = datetime.now(UTC)
     entry_id = f"{now.strftime('%Y%m%d%H%M%S')}_{signal.commodity}_{chunk_id}"
@@ -51,6 +57,7 @@ def append(
 
     entry: dict[str, Any] = {
         "id": entry_id,
+        "source": source,
         "timestamp": now.isoformat(),
         "stream_id": stream_id,
         "chunk_id": chunk_id,
@@ -135,37 +142,44 @@ def update_result(entry_id: str, result: dict[str, Any]) -> bool:
     return updated
 
 
-def compute_stats() -> dict[str, Any]:
-    """Aggregate accuracy stats from completed backtests, grouped by timeframe."""
-    all_entries = read_all()
-    total = len(all_entries)
-    evaluated = [e for e in all_entries if e.get("backtest_result") is not None]
-    pending = total - len(evaluated)
-
-    by_timeframe: dict[str, dict[str, int]] = {
+def _source_stats(entries: list[dict[str, Any]]) -> dict[str, Any]:
+    """Compute timeframe + overall accuracy for a subset of entries."""
+    evaluated = [e for e in entries if e.get("backtest_result") is not None]
+    correct = sum(1 for e in evaluated if e.get("backtest_result", {}).get("correct"))
+    by_tf: dict[str, dict[str, int]] = {
         "short_term": {"total": 0, "correct": 0, "pending": 0},
         "medium_term": {"total": 0, "correct": 0, "pending": 0},
     }
-
-    for e in all_entries:
+    for e in entries:
         tf = e.get("timeframe", "short_term")
-        if tf not in by_timeframe:
+        if tf not in by_tf:
             continue
-        by_timeframe[tf]["total"] += 1
+        by_tf[tf]["total"] += 1
         result = e.get("backtest_result")
         if result is None:
-            by_timeframe[tf]["pending"] += 1
+            by_tf[tf]["pending"] += 1
         elif result.get("correct"):
-            by_timeframe[tf]["correct"] += 1
-
-    # Overall accuracy of evaluated signals (both timeframes combined)
-    correct = sum(1 for e in evaluated if e.get("backtest_result", {}).get("correct"))
-    accuracy = (correct / len(evaluated)) if evaluated else None
-
+            by_tf[tf]["correct"] += 1
     return {
-        "total_signals": total,
+        "total": len(entries),
         "evaluated": len(evaluated),
-        "pending": pending,
-        "accuracy": accuracy,
-        "by_timeframe": by_timeframe,
+        "pending": len(entries) - len(evaluated),
+        "accuracy": (correct / len(evaluated)) if evaluated else None,
+        "by_timeframe": by_tf,
     }
+
+
+def compute_stats() -> dict[str, Any]:
+    """Aggregate accuracy stats, split by source (live vs retrospective)."""
+    all_entries = read_all()
+    live = [e for e in all_entries if e.get("source") == "live"]
+    retrospective = [e for e in all_entries if e.get("source") == "retrospective"]
+    # Backward compat: entries without source field treated as live (older data)
+    unknown = [e for e in all_entries if "source" not in e]
+
+    result = _source_stats(all_entries)
+    result["live"] = _source_stats(live + unknown)
+    result["retrospective"] = _source_stats(retrospective)
+    # Keep original top-level fields for backward compatibility
+    result["total_signals"] = result.pop("total")
+    return result

@@ -483,8 +483,11 @@ function renderStreams() {
     const total = s.signals.length;
 
     let signalsHtml = visible.map(sig => renderSignalItem(sig)).join("");
-    let expand = total > 3
-      ? `<span class="expand-link" onclick="toggleStreamSignals('${escapeHtml(id)}')">Show all ${total} signals &darr;</span><div id="stream-all-${escapeHtml(id)}" class="hidden">${s.signals.slice().reverse().map(sig => renderSignalItem(sig)).join("")}</div>`
+    // "Show all" should only list the OLDER entries not already visible (visible shows last 3)
+    const olderSignals = s.signals.slice(0, Math.max(0, total - 3)).reverse();
+    const hidden = olderSignals.length;
+    let expand = hidden > 0
+      ? `<span class="expand-link" onclick="toggleStreamSignals('${escapeHtml(id)}')">Show ${hidden} older signal${hidden !== 1 ? "s" : ""} &darr;</span><div id="stream-all-${escapeHtml(id)}" class="hidden">${olderSignals.map(sig => renderSignalItem(sig)).join("")}</div>`
       : "";
 
     const card = document.createElement("div");
@@ -701,8 +704,11 @@ function renderCommodities() {
     card.id = `commodity-card-${id}`;
 
     let eventsHtml = visible.map(e => renderSignalItem(e)).join("");
-    let expand = total > 3
-      ? `<span class="expand-link" onclick="toggleCommodity('${id}')">Show all ${total} events &darr;</span><div id="commodity-all-${id}" class="hidden">${c.events.slice().reverse().map(e => renderSignalItem(e)).join("")}</div>`
+    // "Show all" should only list the OLDER entries not already visible
+    const olderEvents = c.events.slice(0, Math.max(0, total - 3)).reverse();
+    const hidden = olderEvents.length;
+    let expand = hidden > 0
+      ? `<span class="expand-link" onclick="toggleCommodity('${id}')">Show ${hidden} older event${hidden !== 1 ? "s" : ""} &darr;</span><div id="commodity-all-${id}" class="hidden">${olderEvents.map(e => renderSignalItem(e)).join("")}</div>`
       : "";
 
     card.innerHTML = `
@@ -828,16 +834,24 @@ setInterval(pollStats, 3000);
 
 async function pollBacktest() {
   const stats = await fetchJSON("/api/backtest/stats");
-  if (!stats || !stats.by_timeframe) return;
+  if (!stats) return;
   const set = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
-  const short = stats.by_timeframe.short_term || {};
-  const med = stats.by_timeframe.medium_term || {};
-  const shortEvald = (short.total || 0) - (short.pending || 0);
-  const medEvald = (med.total || 0) - (med.pending || 0);
-  set("bt-short", `${short.correct || 0} / ${shortEvald}`);
-  set("bt-medium", `${med.correct || 0} / ${medEvald}`);
-  set("bt-pending", (short.pending || 0) + (med.pending || 0));
-  set("bt-overall", stats.accuracy !== null ? `${Math.round(stats.accuracy * 100)}%` : "--");
+
+  const renderPanel = (prefix, data) => {
+    if (!data || !data.by_timeframe) return;
+    const short = data.by_timeframe.short_term || {};
+    const med = data.by_timeframe.medium_term || {};
+    const shortEvald = (short.total || 0) - (short.pending || 0);
+    const medEvald = (med.total || 0) - (med.pending || 0);
+    set(`${prefix}-short`, `${short.correct || 0} / ${shortEvald}`);
+    set(`${prefix}-medium`, `${med.correct || 0} / ${medEvald}`);
+    set(`${prefix}-overall`, data.accuracy !== null ? `${Math.round(data.accuracy * 100)}%` : "--");
+  };
+
+  renderPanel("btl", stats.live);
+  if (stats.live) set("btl-pending", stats.live.pending || 0);
+  renderPanel("btr", stats.retrospective);
+  if (stats.retrospective) set("btr-total", stats.retrospective.total || 0);
 }
 setInterval(pollBacktest, 10000);
 pollBacktest();
