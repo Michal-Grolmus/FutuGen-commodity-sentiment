@@ -46,7 +46,19 @@
       <span id="nav-status" class="status-connecting">...</span>
     </nav>
 
-    <!-- SUB-NAV (sticky) -->
+    <!-- FILTERS PANEL (sticky) -->
+    <div id="filters-panel" class="filters-panel">
+      <div id="filters-streams" class="filters-content">
+        <span class="filters-label">Filters:</span>
+        <div id="filters-streams-buttons" class="filters-buttons"></div>
+      </div>
+      <div id="filters-commodities" class="filters-content hidden">
+        <span class="filters-label">Filters:</span>
+        <div id="filters-commodities-buttons" class="filters-buttons"></div>
+      </div>
+    </div>
+
+    <!-- SUB-NAV: jump to section (sticky) -->
     <div id="sub-nav" class="sub-nav">
       <div id="sub-nav-streams" class="sub-nav-content"></div>
       <div id="sub-nav-commodities" class="sub-nav-content hidden"></div>
@@ -68,13 +80,11 @@
         <h2>Commodities</h2>
       </div>
 
-      <!-- Latest Events section -->
       <section id="latest-events-section">
         <h3 class="section-title">Latest Events</h3>
         <div id="latest-events-grid"></div>
       </section>
 
-      <!-- Full commodity list -->
       <div id="commodities-grid"></div>
     </div>
   </div>

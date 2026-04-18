@@ -74,14 +74,18 @@ function showView(view) {
   document.getElementById("nav-commodities").classList.toggle("active", view === "commodities");
   document.getElementById("sub-nav-streams").classList.toggle("hidden", view !== "streams");
   document.getElementById("sub-nav-commodities").classList.toggle("hidden", view !== "commodities");
+  document.getElementById("filters-streams").classList.toggle("hidden", view !== "streams");
+  document.getElementById("filters-commodities").classList.toggle("hidden", view !== "commodities");
 
   if (view === "commodities") {
-    renderCommoditySubNav();
+    renderCommodityFilters();
+    renderCommodityNav();
     renderLatestEvents();
     renderCommodities();
   }
   if (view === "streams") {
-    renderStreamSubNav();
+    renderStreamFilters();
+    renderStreamNav();
     renderStreams();
   }
 }
@@ -138,41 +142,71 @@ function addStream(id, url, type) {
   }
 }
 
-function renderStreamSubNav() {
-  const nav = document.getElementById("sub-nav-streams");
+function renderStreamFilters() {
+  const panel = document.getElementById("filters-streams-buttons");
   const ids = Object.keys(streams);
   if (ids.length === 0) {
-    nav.innerHTML = '<span style="color:#c9d1d9;font-size:0.78rem">No streams yet</span>';
+    panel.innerHTML = '<span style="color:#8b949e;font-size:0.78rem">No streams yet</span>';
     return;
   }
   const allSelected = ids.every(id => selectedStreamIds.has(id));
   const toggleLabel = allSelected ? "Deselect All" : "Select All";
   const toggleAction = allSelected ? "deselectAllStreams()" : "selectAllStreams()";
-  let html = `<button class="sub-nav-btn toggle-all" onclick="${toggleAction}">${toggleLabel}</button>`;
+  let html = `<button class="filter-btn toggle-all" onclick="${toggleAction}">${toggleLabel}</button>`;
   for (const id of ids) {
     const s = streams[id];
     const cls = selectedStreamIds.has(id) ? "active" : "";
-    html += `<button class="sub-nav-btn ${cls}" onclick="toggleStream('${escapeHtml(id)}')">${escapeHtml(s.name)} <span class="count">${s.signals.length}</span></button>`;
+    html += `<button class="filter-btn ${cls}" onclick="toggleStream('${escapeHtml(id)}')">${escapeHtml(s.name)} <span class="count">${s.signals.length}</span></button>`;
+  }
+  panel.innerHTML = html;
+}
+
+function renderStreamNav() {
+  const nav = document.getElementById("sub-nav-streams");
+  const ids = Object.keys(streams);
+  if (ids.length === 0) { nav.innerHTML = ""; return; }
+  let html = "";
+  for (const id of ids) {
+    const s = streams[id];
+    const cls = selectedStreamIds.has(id) ? "" : "inactive";
+    html += `<button class="sub-nav-btn ${cls}" onclick="focusStream('${escapeHtml(id)}')">${escapeHtml(s.name)}</button>`;
   }
   nav.innerHTML = html;
+}
+
+function focusStream(id) {
+  if (!selectedStreamIds.has(id)) {
+    selectedStreamIds.add(id);
+    renderStreamFilters();
+    renderStreamNav();
+    renderStreams();
+  }
+  // Scroll to the stream card after DOM is ready
+  setTimeout(() => {
+    const el = document.getElementById(`stream-card-${id}`);
+    if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, 50);
 }
 
 function toggleStream(id) {
   if (selectedStreamIds.has(id)) selectedStreamIds.delete(id);
   else selectedStreamIds.add(id);
-  renderStreamSubNav();
+  renderStreamFilters();
+  renderStreamNav();
   renderStreams();
 }
 
 function selectAllStreams() {
   for (const id of Object.keys(streams)) selectedStreamIds.add(id);
-  renderStreamSubNav();
+  renderStreamFilters();
+  renderStreamNav();
   renderStreams();
 }
 
 function deselectAllStreams() {
   selectedStreamIds.clear();
-  renderStreamSubNav();
+  renderStreamFilters();
+  renderStreamNav();
   renderStreams();
 }
 
@@ -201,6 +235,7 @@ function renderStreams() {
 
     const card = document.createElement("div");
     card.className = "stream-card";
+    card.id = `stream-card-${id}`;
     card.innerHTML = `
       <div class="stream-card-header">
         <span class="stream-name">${escapeHtml(s.name)}</span>
@@ -218,38 +253,65 @@ function toggleStreamSignals(id) {
 }
 
 // ===== COMMODITY VIEW =====
-function renderCommoditySubNav() {
-  const nav = document.getElementById("sub-nav-commodities");
+function renderCommodityFilters() {
+  const panel = document.getElementById("filters-commodities-buttons");
   const ids = Object.keys(commodities);
   const allSelected = ids.every(id => selectedCommodityIds.has(id));
   const toggleLabel = allSelected ? "Deselect All" : "Select All";
   const toggleAction = allSelected ? "deselectAllCommodities()" : "selectAllCommodities()";
-  let html = `<button class="sub-nav-btn toggle-all" onclick="${toggleAction}">${toggleLabel}</button>`;
+  let html = `<button class="filter-btn toggle-all" onclick="${toggleAction}">${toggleLabel}</button>`;
   for (const [id, c] of Object.entries(commodities)) {
     const cls = selectedCommodityIds.has(id) ? "active" : "";
-    html += `<button class="sub-nav-btn ${cls}" onclick="toggleCommodityFilter('${id}')">${escapeHtml(COMMODITY_SHORT[id])} <span class="count">${c.events.length}</span></button>`;
+    html += `<button class="filter-btn ${cls}" onclick="toggleCommodityFilter('${id}')">${escapeHtml(COMMODITY_SHORT[id])} <span class="count">${c.events.length}</span></button>`;
+  }
+  panel.innerHTML = html;
+}
+
+function renderCommodityNav() {
+  const nav = document.getElementById("sub-nav-commodities");
+  let html = "";
+  for (const [id, c] of Object.entries(commodities)) {
+    const cls = selectedCommodityIds.has(id) ? "" : "inactive";
+    html += `<button class="sub-nav-btn ${cls}" onclick="focusCommodity('${id}')">${escapeHtml(COMMODITY_SHORT[id])}</button>`;
   }
   nav.innerHTML = html;
+}
+
+function focusCommodity(id) {
+  if (!selectedCommodityIds.has(id)) {
+    selectedCommodityIds.add(id);
+    renderCommodityFilters();
+    renderCommodityNav();
+    renderLatestEvents();
+    renderCommodities();
+  }
+  setTimeout(() => {
+    const el = document.getElementById(`commodity-card-${id}`);
+    if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, 50);
 }
 
 function toggleCommodityFilter(id) {
   if (selectedCommodityIds.has(id)) selectedCommodityIds.delete(id);
   else selectedCommodityIds.add(id);
-  renderCommoditySubNav();
+  renderCommodityFilters();
+  renderCommodityNav();
   renderLatestEvents();
   renderCommodities();
 }
 
 function selectAllCommodities() {
   for (const id of Object.keys(commodities)) selectedCommodityIds.add(id);
-  renderCommoditySubNav();
+  renderCommodityFilters();
+  renderCommodityNav();
   renderLatestEvents();
   renderCommodities();
 }
 
 function deselectAllCommodities() {
   selectedCommodityIds.clear();
-  renderCommoditySubNav();
+  renderCommodityFilters();
+  renderCommodityNav();
   renderLatestEvents();
   renderCommodities();
 }
@@ -309,6 +371,7 @@ function renderCommodities() {
 
     const card = document.createElement("div");
     card.className = "commodity-card";
+    card.id = `commodity-card-${id}`;
 
     let eventsHtml = visible.map(e => renderSignalItem(e)).join("");
     let expand = total > 3
@@ -375,7 +438,7 @@ function connect(endpoint) {
     const streamId = event.stream_id || Object.keys(streams)[0];
     if (!streams[streamId]) addStream(streamId, streamId, "demo");
     streams[streamId].transcript = t.full_text;
-    renderStreamSubNav();
+    renderStreamFilters(); renderStreamNav();
     if (!document.getElementById("view-streams").classList.contains("hidden")) {
       const el = document.getElementById(`transcript-${streamId}`);
       if (el) el.textContent = t.full_text;
@@ -401,8 +464,8 @@ function connect(endpoint) {
       }
     }
 
-    renderStreamSubNav();
-    renderCommoditySubNav();
+    renderStreamFilters(); renderStreamNav();
+    renderCommodityFilters(); renderCommodityNav();
 
     if (!document.getElementById("view-streams").classList.contains("hidden")) renderStreams();
     if (!document.getElementById("view-commodities").classList.contains("hidden")) {
