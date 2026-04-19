@@ -920,7 +920,10 @@ function renderStreamActiveSegments(id, s) {
   const recentClosed = (s.closed_segments || []).slice(-5).reverse();
 
   if (active.length === 0 && recentClosed.length === 0) {
-    return '<div class="segment-active-empty">No segments yet — run at least 1 chunk with commodity signals.</div>';
+    const msg = isDemoMode
+      ? "Demo replays only chunks + signals — segments require a live pipeline with an LLM."
+      : "No segments yet — waiting for first commodity signal.";
+    return `<div class="segment-active-empty">${msg}</div>`;
   }
 
   let html = '';
