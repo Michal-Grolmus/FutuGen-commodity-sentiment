@@ -72,26 +72,56 @@ class StreamIngestor(AudioSource):
                 logger.info("Retry %d/%d in %ds...", retries, MAX_RETRIES, RETRY_DELAY_S)
                 await asyncio.sleep(RETRY_DELAY_S)
 
-    async def _start_stream(self) -> asyncio.subprocess.Process:
-        # Use yt-dlp to get direct audio URL, pipe through ffmpeg
-        ytdlp = await asyncio.create_subprocess_exec(
-            "yt-dlp", "--no-warnings", "-f", "bestaudio",
-            "-o", "-", self._url,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.DEVNULL,
-        )
-        self._processes.append(ytdlp)
+    async def _resolve_direct_url(self) -> str:
+        """Use yt-dlp to resolve a direct audio URL (HLS / HTTPS / RTMP).
 
-        assert ytdlp.stdout is not None
-        ffmpeg = await asyncio.create_subprocess_exec(
-            "ffmpeg", "-i", "pipe:0",
-            "-f", "s16le", "-acodec", "pcm_s16le",
-            "-ar", str(SAMPLE_RATE), "-ac", "1",
-            "pipe:1",
-            stdin=ytdlp.stdout,  # type: ignore[arg-type]
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.DEVNULL,
-        )
+        One-shot call (not piped) — avoids Windows asyncio pipe-between-subprocess
+        bug. Falls back to the original URL if yt-dlp fails or isn't needed
+        (direct HLS/RTMP URLs work with ffmpeg without yt-dlp).
+        """
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                "yt-dlp", "--no-warnings", "-f", "bestaudio/best",
+                "--get-url", self._url,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=30.0)
+            if proc.returncode == 0 and stdout:
+                url = stdout.decode().strip().split("\n")[0]
+                if url:
+                    logger.info("yt-dlp resolved direct URL (%d chars).", len(url))
+                    return url
+            err_text = (stderr or b"").decode(errors="ignore")[:200]
+            logger.warning("yt-dlp could not resolve (%d): %s", proc.returncode, err_text)
+        except FileNotFoundError:
+            logger.warning("yt-dlp not installed; passing URL directly to ffmpeg.")
+        except Exception:
+            logger.exception("yt-dlp error; falling back to original URL.")
+        return self._url
+
+    async def _start_stream(self) -> asyncio.subprocess.Process:
+        # Resolve via yt-dlp first (YouTube/Twitch/etc.), then let ffmpeg read
+        # the direct URL. Pipe-between-subprocesses is not used because on
+        # Windows, asyncio cannot use a StreamReader as another subprocess'
+        # stdin (no fileno()).
+        direct_url = await self._resolve_direct_url()
+        try:
+            ffmpeg = await asyncio.create_subprocess_exec(
+                "ffmpeg", "-i", direct_url,
+                "-f", "s16le", "-acodec", "pcm_s16le",
+                "-ar", str(SAMPLE_RATE), "-ac", "1",
+                "-loglevel", "error",
+                "pipe:1",
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.DEVNULL,
+            )
+        except FileNotFoundError as e:
+            raise RuntimeError(
+                "ffmpeg binary not found on PATH. Install ffmpeg "
+                "(https://ffmpeg.org/download.html) to process live streams. "
+                "File-based sources work without ffmpeg (via PyAV)."
+            ) from e
         self._processes.append(ffmpeg)
         logger.info("Stream connected: %s", self._url)
         return ffmpeg
