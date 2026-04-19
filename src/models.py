@@ -111,13 +111,51 @@ class ScoringResult(BaseModel):
     created_at: datetime = Field(default_factory=_utcnow)
 
 
+class Segment(BaseModel):
+    """A 'super-event' — coherent block of commodity discussion spanning 60+s.
+
+    Built from N individual chunks by SegmentAggregator. The aggregator calls
+    LLM every `check_interval_chunks` (default 6 = 60s at 10s chunks) to decide
+    if the topic continues or has shifted. At close, a reality_score is fetched
+    asynchronously (t0 price vs +1m/+5m/+15m/+1h).
+    """
+    segment_id: str
+    stream_id: str
+    primary_commodity: str
+    secondary_commodities: list[str] = Field(default_factory=list)
+    start_time: datetime
+    end_time: datetime | None = None  # None = still active
+
+    # Built incrementally per check interval
+    chunk_ids: list[str] = Field(default_factory=list)
+
+    # Current (or final) LLM verdict
+    summary: str = ""
+    direction: Direction = Direction.NEUTRAL
+    confidence: float = Field(default=0.0, ge=0.0, le=1.0)
+    rationale: str = ""
+    sentiment_arc: str | None = None  # "opened bullish, closed bearish" for mixed segments
+    overall_timeframe: Timeframe = Timeframe.SHORT_TERM
+
+    # State
+    is_closed: bool = False
+    close_reason: str | None = None  # "topic_shift" | "hard_cap" | "stream_removed" | "break_phrase"
+
+    # Filled by reality scorer after close (not immediately)
+    reality_score: dict | None = None
+
+
 class PipelineEvent(BaseModel):
-    event_type: str  # "transcript" | "extraction" | "signal"
+    # Event types: "transcript" | "extraction" | "signal" | "segment"
+    # For segments, the segment field carries open/update/close state via is_closed.
+    event_type: str
     chunk_id: str
+    stream_id: str | None = None  # explicit per-stream routing (new)
     timestamp: datetime = Field(default_factory=_utcnow)
     transcript: Transcript | None = None
     extraction: ExtractionResult | None = None
     scoring: ScoringResult | None = None
+    segment: Segment | None = None
 
 
 # --- Evaluation ---

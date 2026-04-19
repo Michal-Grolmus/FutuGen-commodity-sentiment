@@ -109,6 +109,9 @@ class SignalBroadcaster:
         self._scoring_latencies: list[float] = []
         # Heatmap: last confidence per commodity
         self._heatmap: dict[str, dict[str, object]] = {}
+        # Active + closed segments (last 50) for late SSE subscribers
+        self._active_segments: dict[str, dict[str, object]] = {}  # segment_id -> dict
+        self._recent_segments: list[dict[str, object]] = []
 
     async def publish(self, event: PipelineEvent) -> None:
         # Track latencies
@@ -157,6 +160,19 @@ class SignalBroadcaster:
                 }
             self._recent_signals = self._recent_signals[-100:]
 
+        # Segment events: track active + recent (closed) segments
+        if event.segment and event.event_type.startswith("segment."):
+            seg_dict = event.segment.model_dump(mode="json")
+            seg_id = event.segment.segment_id
+            if event.event_type == "segment.open":
+                self._active_segments[seg_id] = seg_dict
+            elif event.event_type == "segment.update":
+                self._active_segments[seg_id] = seg_dict
+            elif event.event_type == "segment.close":
+                self._active_segments.pop(seg_id, None)
+                self._recent_segments.append(seg_dict)
+                self._recent_segments = self._recent_segments[-50:]
+
         # Fan out to subscribers
         dead: list[asyncio.Queue[PipelineEvent]] = []
         for q in self._subscribers:
@@ -200,6 +216,12 @@ class SignalBroadcaster:
 
     def get_heatmap(self) -> dict[str, dict[str, object]]:
         return dict(self._heatmap)
+
+    def get_active_segments(self) -> list[dict[str, object]]:
+        return list(self._active_segments.values())
+
+    def get_recent_segments(self) -> list[dict[str, object]]:
+        return list(self._recent_segments)
 
 
 _broadcaster: SignalBroadcaster | None = None
@@ -356,6 +378,30 @@ def create_app(broadcaster: SignalBroadcaster | None = None) -> FastAPI:
         from src.backtest import signal_log
         entries = signal_log.read_all()
         return entries[-limit:]
+
+    @app.get("/api/segments/active")
+    async def segments_active() -> list[dict[str, object]]:
+        """Currently open segments for all streams (for dashboard hydration)."""
+        return _broadcaster.get_active_segments()
+
+    @app.get("/api/segments/recent")
+    async def segments_recent(limit: int = 50) -> list[dict[str, object]]:
+        """Recently closed segments — shown as history on commodity view."""
+        entries = _broadcaster.get_recent_segments()
+        return entries[-limit:]
+
+    @app.get("/api/segments/log")
+    async def segments_log(limit: int = 100) -> list[dict[str, object]]:
+        """Full segment log from disk (closed segments, newest last)."""
+        from src.backtest import segment_log as seg_log
+        entries = seg_log.read_all()
+        return entries[-limit:]
+
+    @app.get("/api/segments/stats")
+    async def segments_stats() -> dict[str, object]:
+        """Per-commodity and per-stream segment accuracy (once reality_score exists)."""
+        from src.backtest import segment_log as seg_log
+        return seg_log.compute_stats()
 
     @app.get("/api/backtest/professional")
     async def backtest_professional() -> dict[str, object]:

@@ -11,6 +11,7 @@ from openai import AsyncOpenAI
 
 from src.analysis.entity_extractor import EntityExtractor
 from src.analysis.impact_scorer import ImpactScorer
+from src.analysis.segment_aggregator import SegmentAggregator, SegmentAggregatorConfig
 from src.config import Settings
 from src.dashboard.server import SignalBroadcaster
 from src.dashboard.terminal import TerminalDisplay
@@ -44,8 +45,10 @@ class Pipeline:
         self._transcript_q: asyncio.Queue[Transcript | None] = asyncio.Queue(
             maxsize=settings.max_queue_size
         )
-        self._scoring_q: asyncio.Queue[ScoringResult | None] = asyncio.Queue(
-            maxsize=settings.max_queue_size
+        # scoring_q carries (transcript, scoring) so segment aggregator can see
+        # the raw transcript text (needed for topic-change detection), not only signals.
+        self._scoring_q: asyncio.Queue[tuple[Transcript, ScoringResult] | None] = (
+            asyncio.Queue(maxsize=settings.max_queue_size)
         )
 
         # Components (initialized lazily in run)
@@ -53,6 +56,7 @@ class Pipeline:
         self._transcriber: Transcriber | None = None
         self._extractor: EntityExtractor | None = None
         self._scorer: ImpactScorer | None = None
+        self._aggregator: SegmentAggregator | None = None
         self._terminal: TerminalDisplay | None = None
         self._notifier: SlackNotifier | None = None
         self._price_client: PriceClient | None = None
@@ -207,7 +211,7 @@ class Pipeline:
                         processing_time_s=0.0,
                     )
 
-                await self._scoring_q.put(scoring)
+                await self._scoring_q.put((transcript, scoring))
             except Exception:
                 logger.exception("Analysis error for chunk %s", transcript.chunk_id)
 
@@ -216,21 +220,23 @@ class Pipeline:
 
     async def _broadcast_loop(self) -> None:
         from src.backtest import signal_log
+        stream_id = self._settings.input_file or self._settings.stream_url or "pipeline"
         while self._running:
-            result = await self._scoring_q.get()
-            if result is None:
+            item = await self._scoring_q.get()
+            if item is None:
                 break
+            transcript, result = item
             try:
                 await self._broadcaster.publish(PipelineEvent(
                     event_type="signal",
                     chunk_id=result.chunk_id,
+                    stream_id=stream_id,
                     scoring=result,
                 ))
                 if self._terminal:
                     self._terminal.update(result)
 
                 # Persist each signal with price snapshot for delayed backtesting
-                stream_id = self._settings.input_file or self._settings.stream_url or "pipeline"
                 for sig in result.signals:
                     price_snapshot: float | None = None
                     if self._price_client is not None:
@@ -251,8 +257,39 @@ class Pipeline:
                 if self._notifier:
                     for sig in result.signals:
                         await self._notifier.notify_if_high_confidence(sig)
+
+                # Segment aggregation: hierarchical super-events
+                if self._aggregator is not None:
+                    try:
+                        seg_events = await self._aggregator.process_chunk(
+                            stream_id, transcript, list(result.signals),
+                        )
+                        for kind, segment in seg_events:
+                            await self._broadcaster.publish(PipelineEvent(
+                                event_type=f"segment.{kind}",
+                                chunk_id=result.chunk_id,
+                                stream_id=stream_id,
+                                segment=segment,
+                            ))
+                    except Exception:
+                        logger.exception("Segment aggregation error for chunk %s",
+                                         result.chunk_id)
             except Exception:
                 logger.exception("Broadcast error for chunk %s", result.chunk_id)
+
+        # Pipeline ending — close any open segments cleanly
+        if self._aggregator is not None:
+            try:
+                closing = await self._aggregator.close_all("pipeline_stopped")
+                for kind, segment in closing:
+                    await self._broadcaster.publish(PipelineEvent(
+                        event_type=f"segment.{kind}",
+                        chunk_id=segment.segment_id,
+                        stream_id=stream_id,
+                        segment=segment,
+                    ))
+            except Exception:
+                logger.exception("Error closing segments on shutdown")
 
         logger.info("Broadcast finished.")
 
@@ -332,9 +369,8 @@ class Pipeline:
         return {"ok": True, "started": True, "reason": "launched"}
 
     def _build_analysis_layer(self) -> bool:
-        """Instantiate extractor + scorer using the configured provider.
-
-        Returns True if a client was built (key present), False otherwise.
+        """Instantiate extractor + scorer + segment aggregator using the
+        configured provider. Returns True if a client was built, False otherwise.
         """
         provider = (self._settings.llm_provider or "anthropic").strip().lower()
         if provider == "openai":
@@ -342,26 +378,24 @@ class Pipeline:
             if not key:
                 return False
             client: AsyncAnthropic | AsyncOpenAI = AsyncOpenAI(api_key=key)
-            self._extractor = EntityExtractor(
-                client, self._settings.openai_model_extraction, provider="openai",
-            )
-            self._scorer = ImpactScorer(
-                client, self._settings.openai_model_scoring,
-                price_client=self._price_client, provider="openai",
-            )
-            return True
+            ext_model = self._settings.openai_model_extraction
+            score_model = self._settings.openai_model_scoring
+        else:
+            provider = "anthropic"
+            key = self._settings.anthropic_api_key
+            if not key:
+                return False
+            client = AsyncAnthropic(api_key=key)
+            ext_model = self._settings.anthropic_model_extraction
+            score_model = self._settings.anthropic_model_scoring
 
-        # Default: Anthropic
-        key = self._settings.anthropic_api_key
-        if not key:
-            return False
-        client = AsyncAnthropic(api_key=key)
-        self._extractor = EntityExtractor(
-            client, self._settings.anthropic_model_extraction, provider="anthropic",
-        )
+        self._extractor = EntityExtractor(client, ext_model, provider=provider)
         self._scorer = ImpactScorer(
-            client, self._settings.anthropic_model_scoring,
-            price_client=self._price_client, provider="anthropic",
+            client, score_model, price_client=self._price_client, provider=provider,
+        )
+        self._aggregator = SegmentAggregator(
+            client, provider=provider,
+            config=SegmentAggregatorConfig(model=score_model),
         )
         return True
 
