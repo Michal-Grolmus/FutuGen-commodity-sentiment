@@ -118,8 +118,36 @@ async function init() {
   }
   showApp("streams");
   connect("/api/events");
+  // Hydrate state from any already-running pipeline (active + recent segments)
+  await hydrateSegments();
   if (config.mock_mode) setStatus("Mock Mode", "status-demo");
   else if (hasKey) setStatus("Ready", "status-ok");
+}
+
+async function hydrateSegments() {
+  try {
+    const [active, recent] = await Promise.all([
+      fetch("/api/segments/active").then(r => r.json()),
+      fetch("/api/segments/recent?limit=30").then(r => r.json()),
+    ]);
+    (active || []).forEach(seg => {
+      if (!streams[seg.stream_id]) addStream(seg.stream_id, seg.stream_id, "live");
+      streams[seg.stream_id].active_segments[seg.primary_commodity] = seg;
+    });
+    (recent || []).forEach(seg => {
+      if (!streams[seg.stream_id]) addStream(seg.stream_id, seg.stream_id, "live");
+      streams[seg.stream_id].closed_segments.push(seg);
+      if (commodities[seg.primary_commodity]) {
+        commodities[seg.primary_commodity]._closed_segments =
+          commodities[seg.primary_commodity]._closed_segments || [];
+        commodities[seg.primary_commodity]._closed_segments.push(seg);
+      }
+    });
+    renderStreamFilters();
+    if (!document.getElementById("view-streams").classList.contains("hidden")) renderStreams();
+  } catch (e) {
+    console.warn("[hydrate] segments failed:", e);
+  }
 }
 
 async function fetchJSON(url) {
@@ -596,12 +624,28 @@ async function startPipelineWithSource(source) {
 }
 
 // ===== STREAM MANAGEMENT =====
+// Stream data shape:
+//   { name, url, type, stopped,
+//     chunks: [{chunk_id, ts, text, signals: [CommoditySignal, ...]}, ...]  // in order
+//     active_segments: { primary_commodity: Segment, ... },  // keyed by primary
+//     closed_segments: [Segment, ...]  // last 30, newest last
+//     _chunks_expanded: bool  // UI state — are older chunks unfolded?
+//   }
+const CHUNKS_VISIBLE_DEFAULT = 3;
+const CLOSED_SEGMENTS_KEEP = 30;
+
 function addStream(id, url, type) {
-  // Adding a stream again clears the removal blocklist for it
   removedStreamIds.delete(id);
   if (!streams[id]) {
-    streams[id] = { name: id, url, type, transcript: "", signals: [] };
-    selectedStreamIds.add(id);  // auto-select new streams
+    streams[id] = {
+      name: id, url, type,
+      stopped: false,
+      chunks: [],
+      active_segments: {},
+      closed_segments: [],
+      _chunks_expanded: false,
+    };
+    selectedStreamIds.add(id);
   }
 }
 
@@ -658,17 +702,6 @@ function renderStreams() {
 
   for (const id of toRender) {
     const s = streams[id];
-    const visible = s.signals.slice(-3).reverse();
-    const total = s.signals.length;
-
-    let signalsHtml = visible.map(sig => renderSignalItem(sig)).join("");
-    // "Show all" should only list the OLDER entries not already visible (visible shows last 3)
-    const olderSignals = s.signals.slice(0, Math.max(0, total - 3)).reverse();
-    const hidden = olderSignals.length;
-    let expand = hidden > 0
-      ? `<span class="expand-link" onclick="toggleStreamSignals('${escapeHtml(id)}')">Show ${hidden} older signal${hidden !== 1 ? "s" : ""} &darr;</span><div id="stream-all-${escapeHtml(id)}" class="hidden">${olderSignals.map(sig => renderSignalItem(sig)).join("")}</div>`
-      : "";
-
     const card = document.createElement("div");
     card.className = "stream-card";
     card.id = `stream-card-${id}`;
@@ -679,6 +712,7 @@ function renderStreams() {
     const stopBtnLabel = s.stopped ? "Start Transcription" : "Pause Transcription";
     const statusLabel = s.stopped ? "stopped" : s.type;
     const statusColor = s.stopped ? "color:#f0b400" : "";
+
     card.innerHTML = `
       <div class="stream-card-header">
         <div class="stream-identity">
@@ -691,10 +725,104 @@ function renderStreams() {
           <button class="btn-remove" onclick="removeStream('${escapeHtml(id)}')" title="Remove this stream">Remove</button>
         </div>
       </div>
-      <div class="stream-transcript" id="transcript-${escapeHtml(id)}">${escapeHtml(s.transcript) || waitingTranscriptMessage(s)}</div>
-      <div class="stream-signals">${signalsHtml || '<span style="color:#8b949e;font-size:0.8rem">No signals yet</span>'}${expand}</div>`;
+      <div class="stream-chunks-container" id="chunks-container-${escapeHtml(id)}">
+        ${renderStreamChunks(id, s)}
+      </div>
+      <div class="stream-segments-container" id="segments-container-${escapeHtml(id)}">
+        ${renderStreamActiveSegments(id, s)}
+      </div>`;
     container.appendChild(card);
   }
+}
+
+function renderStreamChunks(id, s) {
+  const total = s.chunks.length;
+  if (total === 0) {
+    return `<div class="chunks-empty">${waitingTranscriptMessage(s)}</div>`;
+  }
+  const visible = s.chunks.slice(-CHUNKS_VISIBLE_DEFAULT);  // last N, oldest first
+  const older = s.chunks.slice(0, Math.max(0, total - CHUNKS_VISIBLE_DEFAULT));
+  const olderCount = older.length;
+
+  const olderBlock = olderCount > 0
+    ? `<div class="chunks-older ${s._chunks_expanded ? '' : 'hidden'}" id="chunks-older-${escapeHtml(id)}">
+         ${older.map(c => renderChunkRow(c, id)).join("")}
+       </div>
+       <div class="chunks-toggle" onclick="toggleChunksExpand('${escapeHtml(id)}')">
+         ${s._chunks_expanded ? '&uarr; Hide' : 'Show'} ${olderCount} older chunk${olderCount !== 1 ? 's' : ''} ${s._chunks_expanded ? '' : '&darr;'}
+       </div>`
+    : '';
+
+  return olderBlock + `
+    <div class="chunks-visible">
+      ${visible.map(c => renderChunkRow(c, id)).join("")}
+    </div>`;
+}
+
+function renderChunkRow(chunk, streamId) {
+  const ts = chunk.ts || "";
+  const hasEvent = chunk.signals && chunk.signals.length > 0;
+  const dominantDir = hasEvent ? topDirection(chunk.signals) : null;
+  const markerClass = hasEvent ? `chunk-marker chunk-marker-${dominantDir}` : 'chunk-marker-none';
+  const sigSummary = hasEvent
+    ? chunk.signals.map(s => `${s.commodity} ${s.direction} ${Math.round((s.confidence || 0) * 100)}%`).join(' · ')
+    : '';
+  return `
+    <div class="chunk-row ${hasEvent ? 'chunk-has-event' : ''}">
+      <div class="${markerClass}"></div>
+      <div class="chunk-body">
+        <div class="chunk-ts">${escapeHtml(ts)}</div>
+        <div class="chunk-text">${escapeHtml(chunk.text || '')}</div>
+        ${hasEvent ? `<div class="chunk-event-badge">${escapeHtml(sigSummary)}</div>` : ''}
+      </div>
+    </div>`;
+}
+
+function topDirection(signals) {
+  // Highest-confidence signal wins; ties go to bullish > bearish > neutral
+  if (!signals || signals.length === 0) return 'neutral';
+  const top = signals.reduce((best, s) =>
+    (best === null || (s.confidence || 0) > (best.confidence || 0)) ? s : best, null);
+  return top && top.direction ? top.direction : 'neutral';
+}
+
+function renderStreamActiveSegments(id, s) {
+  const active = Object.values(s.active_segments || {});
+  if (active.length === 0) {
+    return '<div class="segment-active-empty">No active segment yet — need at least one signal.</div>';
+  }
+  return active.map(seg => renderActiveSegmentCard(seg)).join('');
+}
+
+function renderActiveSegmentCard(seg) {
+  const dir = seg.direction || 'neutral';
+  const conf = Math.round((seg.confidence || 0) * 100);
+  const commodityName = commodities[seg.primary_commodity]?.display_name || seg.primary_commodity;
+  const secondaries = (seg.secondary_commodities || []).length > 0
+    ? `<span class="seg-secondary">also: ${seg.secondary_commodities.map(c => escapeHtml(c)).join(', ')}</span>`
+    : '';
+  const arc = seg.sentiment_arc ? `<div class="seg-arc">${escapeHtml(seg.sentiment_arc)}</div>` : '';
+  return `
+    <div class="segment-card segment-active segment-${dir}">
+      <div class="segment-header">
+        <span class="segment-pulse"></span>
+        <span class="segment-title">${escapeHtml(commodityName)}</span>
+        <span class="segment-dir segment-dir-${dir}">${dir}</span>
+        <span class="segment-conf">${conf}%</span>
+        <span class="segment-chunks">${(seg.chunk_ids || []).length} chunks</span>
+        ${secondaries}
+      </div>
+      <div class="segment-summary">${escapeHtml(seg.summary || 'Analyzing…')}</div>
+      ${arc}
+      ${seg.rationale ? `<div class="segment-rationale">${escapeHtml(seg.rationale)}</div>` : ''}
+    </div>`;
+}
+
+function toggleChunksExpand(id) {
+  if (!streams[id]) return;
+  streams[id]._chunks_expanded = !streams[id]._chunks_expanded;
+  const container = document.getElementById(`chunks-container-${id}`);
+  if (container) container.innerHTML = renderStreamChunks(id, streams[id]);
 }
 
 // Demo-backed stream names (match demo endpoint stream_map values)
@@ -904,35 +1032,133 @@ function renderCommodities() {
 
   for (const id of toRender) {
     const c = commodities[id];
-    const visible = c.events.slice(-3).reverse();
-    const total = c.events.length;
+    // Collect all segments (closed + active) where this commodity is primary
+    const closedSegments = (c._closed_segments || []).slice();
+    const activeSegments = [];
+    for (const s of Object.values(streams)) {
+      for (const seg of Object.values(s.active_segments || {})) {
+        if (seg.primary_commodity === id) activeSegments.push(seg);
+      }
+    }
+    // Active segments first (newest on top), then closed newest-first
+    const allSegments = [...activeSegments].concat(closedSegments.slice().reverse());
+    const totalSegments = allSegments.length;
+    const totalChunkEvents = c.events.length;
 
     const card = document.createElement("div");
     card.className = "commodity-card";
     card.id = `commodity-card-${id}`;
 
-    let eventsHtml = visible.map(e => renderSignalItem(e)).join("");
-    // "Show all" should only list the OLDER entries not already visible
-    const olderEvents = c.events.slice(0, Math.max(0, total - 3)).reverse();
-    const hidden = olderEvents.length;
-    let expand = hidden > 0
-      ? `<span class="expand-link" onclick="toggleCommodity('${id}')">Show ${hidden} older event${hidden !== 1 ? "s" : ""} &darr;</span><div id="commodity-all-${id}" class="hidden">${olderEvents.map(e => renderSignalItem(e)).join("")}</div>`
-      : "";
+    let segmentsHtml;
+    if (totalSegments === 0) {
+      // Fallback: no segments yet — show raw events (backward compatible demo path)
+      const visible = c.events.slice(-3).reverse();
+      segmentsHtml = visible.map(e => renderSignalItem(e)).join("")
+        || '<div style="color:#8b949e;font-size:0.82rem;padding:0.5rem 0">No events or segments detected yet</div>';
+    } else {
+      // Show first 3 segments by default, rest under expand
+      const top = allSegments.slice(0, 3);
+      const hidden = allSegments.slice(3);
+      segmentsHtml = top.map(seg => renderCommoditySegmentCard(seg, id)).join("");
+      if (hidden.length > 0) {
+        segmentsHtml += `
+          <span class="expand-link" onclick="toggleCommodity('${id}')">Show ${hidden.length} older segment${hidden.length !== 1 ? 's' : ''} &darr;</span>
+          <div id="commodity-all-${id}" class="hidden">
+            ${hidden.map(seg => renderCommoditySegmentCard(seg, id)).join("")}
+          </div>`;
+      }
+    }
 
     card.innerHTML = `
       <div class="commodity-card-header">
         <div onclick="toggleCommodity('${id}_main')" style="flex:1;cursor:pointer">
           <span class="commodity-title">${escapeHtml(c.display_name)}</span>
-          <span class="commodity-count">${total} event${total !== 1 ? "s" : ""}</span>
+          <span class="commodity-count">${totalSegments} segment${totalSegments !== 1 ? 's' : ''} &middot; ${totalChunkEvents} chunk event${totalChunkEvents !== 1 ? 's' : ''}</span>
         </div>
         <button class="btn-remove" onclick="removeCommodity('${id}')" title="Stop tracking this commodity">Remove</button>
       </div>
-      <div class="commodity-events${total > 0 ? " open" : ""}" id="commodity-${id}_main">
-        ${eventsHtml || '<div style="color:#8b949e;font-size:0.82rem;padding:0.5rem 0">No events detected yet</div>'}
-        ${expand}
+      <div class="commodity-events${totalSegments > 0 ? " open" : ""}" id="commodity-${id}_main">
+        ${segmentsHtml}
       </div>`;
     grid.appendChild(card);
   }
+}
+
+function renderCommoditySegmentCard(seg, commodityId) {
+  const dir = seg.direction || 'neutral';
+  const conf = Math.round((seg.confidence || 0) * 100);
+  const isActive = !seg.is_closed;
+  const segState = isActive ? 'active' : 'closed';
+
+  const startTs = seg.start_time ? new Date(seg.start_time).toLocaleTimeString() : '';
+  const endTs = seg.end_time ? new Date(seg.end_time).toLocaleTimeString() : 'ongoing';
+  const durationChunks = (seg.chunk_ids || []).length;
+  const streamLabel = seg.stream_id ? (streams[seg.stream_id]?.name || seg.stream_id) : '';
+
+  // Show top 3 sub-signals (highest confidence, filtered by this commodity)
+  const chunkIds = new Set(seg.chunk_ids || []);
+  const relatedSignals = [];
+  // Walk closed + active streams to find chunk-level signals tied to this segment
+  for (const s of Object.values(streams)) {
+    for (const c of s.chunks) {
+      if (!chunkIds.has(c.chunk_id)) continue;
+      for (const sig of c.signals || []) {
+        if (sig.commodity === commodityId) relatedSignals.push({ ...sig, _chunk_ts: c.ts });
+      }
+    }
+  }
+  relatedSignals.sort((a, b) => (b.confidence || 0) - (a.confidence || 0));
+  const topSubs = relatedSignals.slice(0, 3);
+  const olderSubs = relatedSignals.slice(3);
+
+  const arcHtml = seg.sentiment_arc
+    ? `<div class="seg-arc">${escapeHtml(seg.sentiment_arc)}</div>` : '';
+  const closedBadge = !isActive
+    ? `<span class="seg-badge-closed" title="closed: ${escapeHtml(seg.close_reason || '')}">closed</span>`
+    : `<span class="segment-pulse" title="active"></span>`;
+
+  const subsignalsHtml = topSubs.length > 0
+    ? `<div class="seg-subsignals">
+         ${topSubs.map(sig => renderSubsignalRow(sig)).join("")}
+         ${olderSubs.length > 0 ? `
+           <span class="expand-link" onclick="toggleSegmentSubs('${seg.segment_id}')">Show ${olderSubs.length} more sub-signal${olderSubs.length !== 1 ? 's' : ''} &darr;</span>
+           <div class="seg-subs-hidden hidden" id="seg-subs-${seg.segment_id}">
+             ${olderSubs.map(sig => renderSubsignalRow(sig)).join("")}
+           </div>` : ''}
+       </div>`
+    : '';
+
+  return `
+    <div class="segment-card segment-${segState} segment-${dir}">
+      <div class="segment-header">
+        ${closedBadge}
+        <span class="segment-title">${escapeHtml(seg.summary || 'Segment')}</span>
+        <span class="segment-dir segment-dir-${dir}">${dir}</span>
+        <span class="segment-conf">${conf}%</span>
+      </div>
+      <div class="segment-meta">
+        ${escapeHtml(streamLabel)} · ${startTs} → ${endTs} · ${durationChunks} chunks
+      </div>
+      ${arcHtml}
+      ${seg.rationale ? `<div class="segment-rationale">${escapeHtml(seg.rationale)}</div>` : ''}
+      ${subsignalsHtml}
+    </div>`;
+}
+
+function renderSubsignalRow(sig) {
+  const conf = Math.round((sig.confidence || 0) * 100);
+  return `
+    <div class="subsignal-row">
+      <span class="subsignal-dir subsignal-dir-${sig.direction}">${sig.direction}</span>
+      <span class="subsignal-conf">${conf}%</span>
+      <span class="subsignal-rationale">${escapeHtml((sig.rationale || '').slice(0, 120))}</span>
+      <span class="subsignal-ts">${escapeHtml(sig._chunk_ts || '')}</span>
+    </div>`;
+}
+
+function toggleSegmentSubs(segId) {
+  const el = document.getElementById(`seg-subs-${segId}`);
+  if (el) el.classList.toggle("hidden");
 }
 
 function toggleCommodity(id) {
@@ -984,14 +1210,28 @@ function connect(endpoint) {
     const t = event.transcript;
     if (!t) return;
     const streamId = event.stream_id || Object.keys(streams)[0];
-    if (removedStreamIds.has(streamId)) return;  // user removed it — don't resurrect
+    if (removedStreamIds.has(streamId)) return;
     if (!streams[streamId]) addStream(streamId, streamId, "demo");
-    if (streams[streamId].stopped) return;  // skip transcript update if stopped
-    streams[streamId].transcript = t.full_text;
+    if (streams[streamId].stopped) return;
+
+    // Append new chunk to the rolling buffer. Signals attach later via the
+    // signal event (usually arrives within a second of transcript).
+    const s = streams[streamId];
+    // If this chunk_id already exists (re-processing), skip
+    if (s.chunks.some(c => c.chunk_id === t.chunk_id)) return;
+    s.chunks.push({
+      chunk_id: t.chunk_id,
+      ts: new Date().toLocaleTimeString(),
+      text: t.full_text || "",
+      signals: [],  // filled when the signal event arrives
+    });
+    // Keep last ~5 min (~30 chunks @ 10s)
+    if (s.chunks.length > 30) s.chunks = s.chunks.slice(-30);
+
     renderStreamFilters();
     if (!document.getElementById("view-streams").classList.contains("hidden")) {
-      const el = document.getElementById(`transcript-${streamId}`);
-      if (el) el.textContent = t.full_text;
+      const container = document.getElementById(`chunks-container-${streamId}`);
+      if (container) container.innerHTML = renderStreamChunks(streamId, s);
       else renderStreams();
     }
   });
@@ -1001,9 +1241,9 @@ function connect(endpoint) {
     const scoring = event.scoring;
     if (!scoring) return;
     const streamId = event.stream_id || Object.keys(streams)[0];
-    if (removedStreamIds.has(streamId)) return;  // user removed it — don't resurrect
+    if (removedStreamIds.has(streamId)) return;
     if (!streams[streamId]) addStream(streamId, streamId, "demo");
-    if (streams[streamId].stopped) return;  // skip signals + commodity events when paused
+    if (streams[streamId].stopped) return;
 
     const ts = Date.now();
     for (const sig of scoring.signals) {
@@ -1012,21 +1252,72 @@ function connect(endpoint) {
       sig._stream_id = streamId;
       sig.chunk_id = scoring.chunk_id;
 
-      streams[streamId].signals.push(sig);
       if (commodities[sig.commodity]) {
         commodities[sig.commodity].events.push(sig);
       }
     }
 
+    // Attach signals to their chunk if it exists (it should, from transcript event)
+    const s = streams[streamId];
+    const chunk = s.chunks.find(c => c.chunk_id === scoring.chunk_id);
+    if (chunk) {
+      chunk.signals = chunk.signals.concat(scoring.signals);
+    }
+
     renderStreamFilters();
     renderCommodityFilters();
 
-    if (!document.getElementById("view-streams").classList.contains("hidden")) renderStreams();
+    if (!document.getElementById("view-streams").classList.contains("hidden")) {
+      const container = document.getElementById(`chunks-container-${streamId}`);
+      if (container) container.innerHTML = renderStreamChunks(streamId, s);
+      else renderStreams();
+    }
     if (!document.getElementById("view-commodities").classList.contains("hidden")) {
       renderLatestEvents();
       renderCommodities();
     }
   });
+
+  // ----- SEGMENT EVENTS (hierarchical super-events) -----
+  const handleSegmentEvent = (kind) => (e) => {
+    const event = JSON.parse(e.data);
+    const seg = event.segment;
+    if (!seg) return;
+    const streamId = event.stream_id || seg.stream_id;
+    if (removedStreamIds.has(streamId)) return;
+    if (!streams[streamId]) addStream(streamId, streamId, "demo");
+    const s = streams[streamId];
+
+    if (kind === "close") {
+      // Remove from active, add to closed history
+      delete s.active_segments[seg.primary_commodity];
+      s.closed_segments.push(seg);
+      if (s.closed_segments.length > CLOSED_SEGMENTS_KEEP) {
+        s.closed_segments = s.closed_segments.slice(-CLOSED_SEGMENTS_KEEP);
+      }
+      // Also attach to commodity view's segment history
+      if (commodities[seg.primary_commodity]) {
+        commodities[seg.primary_commodity]._closed_segments =
+          commodities[seg.primary_commodity]._closed_segments || [];
+        commodities[seg.primary_commodity]._closed_segments.push(seg);
+      }
+    } else {
+      // open / update
+      s.active_segments[seg.primary_commodity] = seg;
+    }
+
+    if (!document.getElementById("view-streams").classList.contains("hidden")) {
+      const container = document.getElementById(`segments-container-${streamId}`);
+      if (container) container.innerHTML = renderStreamActiveSegments(streamId, s);
+    }
+    if (!document.getElementById("view-commodities").classList.contains("hidden")) {
+      renderLatestEvents();
+      renderCommodities();
+    }
+  };
+  source.addEventListener("segment.open", handleSegmentEvent("open"));
+  source.addEventListener("segment.update", handleSegmentEvent("update"));
+  source.addEventListener("segment.close", handleSegmentEvent("close"));
 
   source.addEventListener("keepalive", () => {});
 }
