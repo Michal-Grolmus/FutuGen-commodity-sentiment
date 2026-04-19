@@ -370,7 +370,59 @@ Pozorování z reálného testu (viz sekce 3.4): 28 z 38 signálů v 10-min segm
 
 ---
 
-## 10. Závěr
+## 10. Hierarchická segmentace — super-události
+
+Projekt prošel dodatečným designovým krokem po pozorování 28 neutrálních "gold" signálů z 10-min Yahoo Finance stream segmentu. Řešení: **dvouúrovňová reprezentace**.
+
+### 10.1 Koncepce
+
+- **Chunk** (10 s) — raw transkripce + 0..N signálů (jako dříve)
+- **Segment** (typicky 1–15 min) — koherentní blok diskusí, agregován LLM
+
+Každých 6 chunků (60 s) aggregator odešle do LLM:
+- Aktuální segment summary
+- Všechny chunks dosud
+- Otázku: *pokračuje stejné téma, nebo začíná nové?*
+
+LLM vrací `{continue, summary, direction, confidence, sentiment_arc, timeframe}`. Na `continue=false` se segment uzavře, další chunk začne nový. Hard cap 15 min zabrání nekonečným segmentům. Fráze jako *"now let's turn to..."*, *"in other news..."* segment zavřou okamžitě (před čekáním na 60-s tick).
+
+### 10.2 Primary / secondary commodity model
+
+Segment má jednu **primary commodity** (nejvíce zmíněná) + seznam **secondary** (token zmínky). Proti paralelním segmentům per-commodity — ty produkují spam pro pouhé zmínky ("gold is up, silver too"). Aktuální implementace startuje paralelní segment, kdykoli je signal vyprodukován pro jinou komoditu, a jejich primary se určuje z signal counts.
+
+### 10.3 Reality score
+
+Po uzavření segmentu se **asynchronně** (přes `segment_reality` worker) stáhne cena primary commodity na horizontech **+1 min / +5 min / +15 min / +1 h** a porovná se direction segmentu s actual pohybem trhu. |change| < 0.5 % = neutral.
+
+**Tohle je klíč k pravé produkční validaci** — dashboard Evaluation tab má live panel *"Per-commodity segment accuracy"* počítaný z běžícího provozu, ne z retrospektivních dat. Limit: yfinance má 1-min bars jen na posledních 7 dní; starší segmenty fallbackují na daily close. Pro plnou produkci je potřeba upgrade na Polygon.io / Alpha Vantage Premium.
+
+### 10.4 UI hierarchie
+
+- **Stream view**: poslední 3 chunks viditelné, starší pod "Show N older", pod nimi aktivní segment (pulsuje). Chunky s signálem mají vlevo barevný marker (bullish/bearish/neutral), text stejný jako chunks bez signálu.
+- **Commodity view**: 3 nejnovější segmenty karty (primary=daná komodita), rozbalitelně všechny. Pod každým segmentem: top-3 sub-signály s možností rozbalit zbytek.
+
+### 10.5 Přínos oproti flat modelu
+
+Pro 10-min segment o zlatě:
+- **Před**: 28 individuálních "neutral gold" signálů (spam)
+- **Po**: 1 segment karta *"Yahoo gold segment — central bank demand narrative, bullish 85 %"* + 3 nejlepší sub-signály, zbytek sbalený
+
+Analytický přínos: **segment má time window**, takže `reality_score` měří okamžitou reakci trhu na konkrétní reportáž. Toto bylo fundamentální omezení popsané v sekci 8.2 — nyní obcházeno pro live provoz.
+
+### 10.6 Implementace
+
+- `src/analysis/segment_aggregator.py` (~350 LOC) — state per (stream, commodity)
+- `src/backtest/segment_log.py` — JSONL perzistence
+- `src/backtest/segment_reality.py` — async worker pro post-close price lookup
+- `src/models.py::Segment` — Pydantic model
+- Prompt: `SEGMENT_SYSTEM_PROMPT` v `src/analysis/prompts.py` — řídí topic-change + summary
+- Testy: `tests/test_segment_aggregator.py` — 10 jednotkových testů (open, continue, close, hard cap, break phrase, malformed JSON, multi-commodity, close_stream / close_all)
+
+LLM náklad: +1 volání per 60 s aktivního segmentu = cca **+17 % cost oproti čistému chunk-level scoringu**. Za tu cenu dostáváme hierarchii, agregovaný summary, sentiment arc a reality-score validaci.
+
+---
+
+## 11. Závěr
 
 Pipeline je **end-to-end funkční, Dockerizovaná, metodicky otestovaná** (96 jednotkových testů, ruff clean, mypy strict). Backtest framework je **quant-grade**: walk-forward split, baselines, bootstrap CI, McNemar test, horizon analysis, P&L simulation — vše bez look-ahead leakage.
 

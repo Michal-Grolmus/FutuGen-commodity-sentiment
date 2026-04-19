@@ -141,16 +141,20 @@ class SegmentAggregator:
         for commodity, commodity_signals in by_commodity.items():
             key = (stream_id, commodity)
             active = self._active.get(key)
-            if active is None:
-                # Start a new segment for this commodity
+            is_new = active is None
+            if is_new:
                 active = self._new_segment(stream_id, commodity)
                 self._active[key] = active
-                # Emit 'open' event — we'll fill summary on first check
-                events.append(("open", self._snapshot(active)))
 
             active.all_chunks.append(chunk_entry)
             active.chunks_since_last_check.append(chunk_entry)
             active.commodity_mention_count[commodity] += len(commodity_signals)
+
+            if is_new:
+                # Emit 'open' AFTER the first chunk is attached so the snapshot
+                # already reports chunk_ids = [first_id].
+                events.append(("open", self._snapshot(active)))
+
             events.extend(await self._maybe_check(active))
 
         # Break phrase hard-close
