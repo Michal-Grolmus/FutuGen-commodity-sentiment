@@ -86,7 +86,11 @@
         <div class="stat-item"><span class="stat-label">Score</span><span class="stat-value" id="stat-score">--</span></div>
         <div class="stat-item"><span class="stat-label">Chunks</span><span class="stat-value" id="stat-chunks-val">0</span></div>
         <div class="stat-item"><span class="stat-label">Signals</span><span class="stat-value" id="stat-signals-val">0</span></div>
-        <div class="stat-item"><span class="stat-label">API cost</span><span class="stat-value" id="stat-cost-val">$0.0000</span></div>
+        <div class="stat-item" title="Estimate based on input/output token counts. Click the link to see actual billed usage at the provider.">
+          <span class="stat-label">API cost (est.)</span>
+          <span class="stat-value" id="stat-cost-val">$0.0000</span>
+          <a id="stat-cost-link" class="stat-inline-link" target="_blank" rel="noopener" href="https://console.anthropic.com/settings/usage">actual &rarr;</a>
+        </div>
       </div>
 
       <!-- Backtest accuracy widgets (split by source) -->

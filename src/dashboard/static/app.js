@@ -77,7 +77,7 @@ function loadSavedStreams() {
   try {
     const raw = localStorage.getItem("csm_saved_streams");
     if (raw) stored = JSON.parse(raw);
-  } catch {}
+  } catch (e) { void e; }
   // The `historical` category is curated by the app — we wipe stored entries
   // in that category on every load so curation updates (e.g. replacing a
   // slow-start video with a front-loaded one) always propagate. User-added
@@ -92,7 +92,7 @@ function loadSavedStreams() {
 }
 
 function persistSavedStreams(list) {
-  try { localStorage.setItem("csm_saved_streams", JSON.stringify(list)); } catch {}
+  try { localStorage.setItem("csm_saved_streams", JSON.stringify(list)); } catch (e) { void e; }
 }
 
 let savedStreams = loadSavedStreams();
@@ -149,7 +149,7 @@ async function rehydrateApiKeyFromStorage() {
     });
     const data = await res.json();
     return !!(data && data.ok && data.active);
-  } catch {
+  } catch (e) {
     return false;
   }
 }
@@ -208,7 +208,7 @@ async function hydrateSegments() {
 }
 
 async function fetchJSON(url) {
-  try { const r = await fetch(url); return await r.json(); } catch { return {}; }
+  try { const r = await fetch(url); return await r.json(); } catch (e) { return {}; }
 }
 
 function escapeHtml(t) {
@@ -453,7 +453,7 @@ async function removeSettingsApiKey() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ api_key: "", provider }),
     });
-  } catch {}
+  } catch (e) { void e; }
   renderSettingsView();
 
   // If NO provider has a key anymore, return to onboarding so the user sees
@@ -470,7 +470,7 @@ async function removeSettingsApiKey() {
 async function showSignalSource(streamId, sigRef) {
   // sigRef is a JSON-encoded signal object (passed from button onclick)
   let sig;
-  try { sig = JSON.parse(decodeURIComponent(sigRef)); } catch { return; }
+  try { sig = JSON.parse(decodeURIComponent(sigRef)); } catch (e) { return; }
 
   const stream = streams[streamId] || { name: streamId, url: "", type: "unknown" };
   const body = document.getElementById("source-modal-body");
@@ -1003,7 +1003,7 @@ async function removeCommodity(id) {
   if (!confirm(`Remove commodity "${commodities[id].display_name}"? Events will be cleared and new signals for this commodity will be ignored.`)) return;
   try {
     await fetch(`/api/commodities/${encodeURIComponent(id)}`, { method: "DELETE" });
-  } catch {}
+  } catch (e) { void e; }
   delete commodities[id];
   selectedCommodityIds.delete(id);
   renderCommodityFilters();
@@ -1430,6 +1430,16 @@ async function pollStats() {
   set("stat-chunks-val", stats.chunks_processed || 0);
   set("stat-signals-val", stats.total_signals || 0);
   set("stat-cost-val", `$${(stats.total_cost_usd || 0).toFixed(4)}`);
+
+  // Point the "actual →" link at the right provider's usage page
+  const link = document.getElementById("stat-cost-link");
+  if (link) {
+    const provider = (typeof getCurrentProvider === "function") ? getCurrentProvider() : "anthropic";
+    link.href = provider === "openai"
+      ? "https://platform.openai.com/usage"
+      : "https://console.anthropic.com/settings/usage";
+    link.title = `Open ${provider === "openai" ? "OpenAI" : "Anthropic"} usage dashboard (actual billed cost)`;
+  }
 }
 setInterval(pollStats, 3000);
 
@@ -1507,7 +1517,7 @@ async function refreshEvaluation() {
     try {
       const segStats = await fetch("/api/segments/stats").then(r => r.json());
       renderSegmentStats(segStatsEl, segStats);
-    } catch {
+    } catch (e) {
       segStatsEl.innerHTML = "<p class='hint'>Failed to load segment stats.</p>";
     }
   }
