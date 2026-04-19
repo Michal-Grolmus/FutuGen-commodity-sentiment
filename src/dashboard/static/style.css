@@ -400,6 +400,16 @@ a.stream-url:hover { text-decoration: underline; }
           mask-image: linear-gradient(to bottom, transparent 0, #000 55%);
 }
 
+/* When older chunks are expanded, the dim+fade would make the 3rd chunk
+   less visible than the (now-visible) 4th — undo both treatments so the
+   whole list reads at full contrast. Re-applied on collapse. */
+.chunks-visible.all-expanded > .chunk-row:nth-last-child(2),
+.chunks-visible.all-expanded > .chunk-row:nth-last-child(3) {
+  opacity: 1;
+  -webkit-mask-image: none;
+          mask-image: none;
+}
+
 /* A single chunk row with marker on the left */
 .chunk-row {
   display: flex; gap: 0.6rem;

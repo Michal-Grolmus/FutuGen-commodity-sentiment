@@ -915,8 +915,12 @@ function renderStreamChunks(id, s) {
        </div>`
     : '';
 
+  // When older chunks are expanded, the dim+fade treatment of the last three
+  // visible chunks is disabled via the `all-expanded` modifier — otherwise
+  // a fully-opaque 4th chunk would stand out more than the dimmed 3rd.
+  const visibleClass = s._chunks_expanded ? "chunks-visible all-expanded" : "chunks-visible";
   return olderBlock + `
-    <div class="chunks-visible">
+    <div class="${visibleClass}">
       ${visible.map(c => renderChunkRow(c, id)).join("")}
     </div>`;
 }
@@ -1245,7 +1249,73 @@ function renderLatestEvents() {
   }
 }
 
+// Bundle the per-commodity rendering pieces so renderCommodities() and the
+// incremental updateCommodityCard() stay in sync.
+function _collectCommoditySegments(id) {
+  const c = commodities[id];
+  if (!c) return { allSegments: [], activeCount: 0, closedCount: 0 };
+  const closedSegments = (c._closed_segments || []).slice();
+  const activeSegments = [];
+  for (const s of Object.values(streams)) {
+    for (const seg of Object.values(s.active_segments || {})) {
+      if (seg.primary_commodity === id) activeSegments.push(seg);
+    }
+  }
+  // Active segments first (newest on top), then closed newest-first
+  const allSegments = [...activeSegments].concat(closedSegments.slice().reverse());
+  return { allSegments, activeCount: activeSegments.length, closedCount: closedSegments.length };
+}
+
+function _renderCommodityEventsInner(id, allSegments) {
+  const c = commodities[id];
+  if (!c) return '';
+  if (allSegments.length === 0) {
+    // Fallback: no segments yet — show raw events (backward compatible demo path)
+    const visible = c.events.slice(-3).reverse();
+    return visible.map(e => renderSignalItem(e)).join("")
+      || '<div style="color:#8b949e;font-size:0.82rem;padding:0.5rem 0">No events or segments detected yet</div>';
+  }
+  const top = allSegments.slice(0, 3);
+  const hidden = allSegments.slice(3);
+  let html = top.map(seg => renderCommoditySegmentCard(seg, id)).join("");
+  if (hidden.length > 0) {
+    html += `
+      <span class="expand-link" onclick="toggleCommodity('${id}')">Show ${hidden.length} older segment${hidden.length !== 1 ? 's' : ''} &darr;</span>
+      <div id="commodity-all-${id}" class="hidden">
+        ${hidden.map(seg => renderCommoditySegmentCard(seg, id)).join("")}
+      </div>`;
+  }
+  return html;
+}
+
+function _buildCommodityCard(id) {
+  const c = commodities[id];
+  if (!c) return null;
+  const { allSegments } = _collectCommoditySegments(id);
+  const totalSegments = allSegments.length;
+  const totalChunkEvents = c.events.length;
+
+  const card = document.createElement("div");
+  card.className = "commodity-card";
+  card.id = `commodity-card-${id}`;
+  card.innerHTML = `
+    <div class="commodity-card-header">
+      <div onclick="toggleCommodity('${id}_main')" style="flex:1;cursor:pointer">
+        <span class="commodity-title">${escapeHtml(c.display_name)}</span>
+        <span class="commodity-count">${totalSegments} segment${totalSegments !== 1 ? 's' : ''} &middot; ${totalChunkEvents} chunk event${totalChunkEvents !== 1 ? 's' : ''}</span>
+      </div>
+      <button class="btn-remove" onclick="removeCommodity('${id}')" title="Stop tracking this commodity">Remove</button>
+    </div>
+    <div class="commodity-events${totalSegments > 0 ? " open" : ""}" id="commodity-${id}_main">
+      ${_renderCommodityEventsInner(id, allSegments)}
+    </div>`;
+  return card;
+}
+
 function renderCommodities() {
+  // Full re-render — used only on structural changes (filter toggle, add/remove
+  // commodity). SSE event handlers should call updateCommodityCard(id) instead
+  // so user-opened panels aren't collapsed by incoming events.
   const grid = document.getElementById("commodities-grid");
   if (!grid) return;
   grid.innerHTML = "";
@@ -1257,56 +1327,73 @@ function renderCommodities() {
   }
 
   for (const id of toRender) {
-    const c = commodities[id];
-    // Collect all segments (closed + active) where this commodity is primary
-    const closedSegments = (c._closed_segments || []).slice();
-    const activeSegments = [];
-    for (const s of Object.values(streams)) {
-      for (const seg of Object.values(s.active_segments || {})) {
-        if (seg.primary_commodity === id) activeSegments.push(seg);
-      }
+    const card = _buildCommodityCard(id);
+    if (card) grid.appendChild(card);
+  }
+}
+
+// Incremental update: refresh ONE commodity's events + count without touching
+// the rest of the grid. Preserves each panel's open/closed state (including
+// the "show older segments" expansion toggle).
+function updateCommodityCard(id) {
+  if (!commodities[id]) return;
+  const grid = document.getElementById("commodities-grid");
+  if (!grid) return;
+
+  const existing = document.getElementById(`commodity-card-${id}`);
+
+  // If the commodity isn't in the current selection, make sure no stale
+  // card is hanging around, then exit.
+  if (!selectedCommodityIds.has(id)) {
+    if (existing) existing.remove();
+    return;
+  }
+
+  const { allSegments } = _collectCommoditySegments(id);
+  const totalSegments = allSegments.length;
+  const totalChunkEvents = commodities[id].events.length;
+
+  // No existing card for a now-visible commodity → build + insert it. If the
+  // grid was showing the "No commodities selected" empty state, fall back to
+  // a full re-render so the hint is replaced cleanly.
+  if (!existing) {
+    if (grid.querySelector(".empty-state")) {
+      renderCommodities();
+      return;
     }
-    // Active segments first (newest on top), then closed newest-first
-    const allSegments = [...activeSegments].concat(closedSegments.slice().reverse());
-    const totalSegments = allSegments.length;
-    const totalChunkEvents = c.events.length;
+    const card = _buildCommodityCard(id);
+    if (card) grid.appendChild(card);
+    return;
+  }
 
-    const card = document.createElement("div");
-    card.className = "commodity-card";
-    card.id = `commodity-card-${id}`;
+  // Update the count in the header — card header stays in place (preserves
+  // its DOM node and any transient hover/focus state).
+  const countEl = existing.querySelector(".commodity-count");
+  if (countEl) {
+    countEl.innerHTML =
+      `${totalSegments} segment${totalSegments !== 1 ? 's' : ''} &middot; ${totalChunkEvents} chunk event${totalChunkEvents !== 1 ? 's' : ''}`;
+  }
 
-    let segmentsHtml;
-    if (totalSegments === 0) {
-      // Fallback: no segments yet — show raw events (backward compatible demo path)
-      const visible = c.events.slice(-3).reverse();
-      segmentsHtml = visible.map(e => renderSignalItem(e)).join("")
-        || '<div style="color:#8b949e;font-size:0.82rem;padding:0.5rem 0">No events or segments detected yet</div>';
-    } else {
-      // Show first 3 segments by default, rest under expand
-      const top = allSegments.slice(0, 3);
-      const hidden = allSegments.slice(3);
-      segmentsHtml = top.map(seg => renderCommoditySegmentCard(seg, id)).join("");
-      if (hidden.length > 0) {
-        segmentsHtml += `
-          <span class="expand-link" onclick="toggleCommodity('${id}')">Show ${hidden.length} older segment${hidden.length !== 1 ? 's' : ''} &darr;</span>
-          <div id="commodity-all-${id}" class="hidden">
-            ${hidden.map(seg => renderCommoditySegmentCard(seg, id)).join("")}
-          </div>`;
-      }
-    }
+  // Replace the inner events HTML but leave the `.open` class and the
+  // `commodity-all-*` "show older" toggle state alone.
+  const eventsEl = existing.querySelector(`#commodity-${id}_main`);
+  if (!eventsEl) return;
+  const wasOpen = eventsEl.classList.contains("open");
+  const olderExpanded = (() => {
+    const allEl = existing.querySelector(`#commodity-all-${id}`);
+    return allEl ? !allEl.classList.contains("hidden") : false;
+  })();
 
-    card.innerHTML = `
-      <div class="commodity-card-header">
-        <div onclick="toggleCommodity('${id}_main')" style="flex:1;cursor:pointer">
-          <span class="commodity-title">${escapeHtml(c.display_name)}</span>
-          <span class="commodity-count">${totalSegments} segment${totalSegments !== 1 ? 's' : ''} &middot; ${totalChunkEvents} chunk event${totalChunkEvents !== 1 ? 's' : ''}</span>
-        </div>
-        <button class="btn-remove" onclick="removeCommodity('${id}')" title="Stop tracking this commodity">Remove</button>
-      </div>
-      <div class="commodity-events${totalSegments > 0 ? " open" : ""}" id="commodity-${id}_main">
-        ${segmentsHtml}
-      </div>`;
-    grid.appendChild(card);
+  eventsEl.innerHTML = _renderCommodityEventsInner(id, allSegments);
+
+  // Re-apply preserved state. A brand-new card defaults to open when it has
+  // segments (matches _buildCommodityCard), but if the user had explicitly
+  // closed it we keep it closed.
+  if (wasOpen) eventsEl.classList.add("open");
+  else eventsEl.classList.remove("open");
+  if (olderExpanded) {
+    const allEl = existing.querySelector(`#commodity-all-${id}`);
+    if (allEl) allEl.classList.remove("hidden");
   }
 }
 
@@ -1534,7 +1621,10 @@ function connect(endpoint) {
     }
     if (!document.getElementById("view-commodities").classList.contains("hidden")) {
       renderLatestEvents();
-      renderCommodities();
+      // Incremental: only the commodities referenced by THIS signal's
+      // cards refresh. Other cards keep their open/closed panel state.
+      const touched = new Set(scoring.signals.map(sg => sg.commodity));
+      touched.forEach(cid => updateCommodityCard(cid));
     }
   });
 
@@ -1572,7 +1662,12 @@ function connect(endpoint) {
     }
     if (!document.getElementById("view-commodities").classList.contains("hidden")) {
       renderLatestEvents();
-      renderCommodities();
+      // Incremental: refresh only the commodity this segment belongs to
+      // (primary) and any secondaries, so other panels keep their state.
+      updateCommodityCard(seg.primary_commodity);
+      for (const sec of (seg.secondary_commodities || [])) {
+        updateCommodityCard(sec);
+      }
     }
   };
   source.addEventListener("segment.open", handleSegmentEvent("open"));

@@ -629,7 +629,11 @@ def create_app(broadcaster: SignalBroadcaster | None = None) -> FastAPI:
     async def demo_stream(request: Request) -> EventSourceResponse:
         """Stream saved evaluation results as live demo (no API key needed).
 
-        Distributes events across 3 simulated streams to show multi-stream behavior.
+        Emits the same event set a running pipeline would (transcript, signal,
+        segment.open/update/close) so the UI shows hierarchical super-events
+        even without an LLM connected. Segments are simulated per stream:
+        chunks sharing the same primary commodity roll up into one segment;
+        a primary-commodity change closes the old and opens a new one.
         """
 
         # Assign each excerpt to one of 3 streams (by topic)
@@ -648,6 +652,67 @@ def create_app(broadcaster: SignalBroadcaster | None = None) -> FastAPI:
             "neutral_01": "Yahoo Finance",
         }
 
+        def _direction_for(signals: list[dict]) -> str:
+            """Majority direction (bullish / bearish / neutral)."""
+            if not signals:
+                return "neutral"
+            counts: dict[str, int] = {}
+            for s in signals:
+                d = str(s.get("direction", "neutral"))
+                counts[d] = counts.get(d, 0) + 1
+            return max(counts.items(), key=lambda kv: kv[1])[0]
+
+        def _avg_confidence(signals: list[dict]) -> float:
+            if not signals:
+                return 0.0
+            return sum(float(s.get("confidence", 0.0)) for s in signals) / len(signals)
+
+        def _timeframe(signals: list[dict]) -> str:
+            """Majority timeframe; defaults to short_term."""
+            if not signals:
+                return "short_term"
+            counts: dict[str, int] = {}
+            for s in signals:
+                t = str(s.get("timeframe", "short_term"))
+                counts[t] = counts.get(t, 0) + 1
+            return max(counts.items(), key=lambda kv: kv[1])[0]
+
+        def _build_segment(
+            seg_id: str, stream_id: str, signals: list[dict],
+            chunk_ids: list[str], start_ts: str, text: str,
+            is_closed: bool, end_ts: str | None = None,
+            close_reason: str | None = None,
+            sentiment_arc: str | None = None,
+        ) -> dict:
+            """Build a Segment payload matching src.models.Segment."""
+            primary = signals[0]["commodity"] if signals else "crude_oil_wti"
+            secondary = sorted({
+                s["commodity"] for s in signals if s["commodity"] != primary
+            })
+            # Short summary: concatenate the first rationale plus chunk count
+            lead = signals[0].get("rationale", text[:120]) if signals else text[:120]
+            summary = (
+                f"{lead} ({len(chunk_ids)} chunk{'s' if len(chunk_ids) != 1 else ''})"
+            )
+            return {
+                "segment_id": seg_id,
+                "stream_id": stream_id,
+                "primary_commodity": primary,
+                "secondary_commodities": secondary,
+                "start_time": start_ts,
+                "end_time": end_ts,
+                "chunk_ids": chunk_ids,
+                "summary": summary,
+                "direction": _direction_for(signals),
+                "confidence": round(_avg_confidence(signals), 2),
+                "rationale": lead,
+                "sentiment_arc": sentiment_arc,
+                "overall_timeframe": _timeframe(signals),
+                "is_closed": is_closed,
+                "close_reason": close_reason,
+                "reality_score": None,
+            }
+
         async def generate() -> AsyncGenerator[dict[str, str], None]:
             predictions_path = PROJECT_ROOT / "evaluation" / "results" / "predictions.json"
             if not predictions_path.exists():
@@ -656,6 +721,22 @@ def create_app(broadcaster: SignalBroadcaster | None = None) -> FastAPI:
 
             with open(predictions_path, encoding="utf-8") as f:
                 predictions = json.load(f)
+
+            # Per-stream active segment state. Each entry:
+            #   { seg_id, primary, signals[], chunk_ids[], start_ts, open_text,
+            #     first_direction }
+            active: dict[str, dict[str, object]] = {}
+            from datetime import UTC, datetime
+
+            def now_iso() -> str:
+                return datetime.now(UTC).isoformat()
+
+            seg_counter = 0
+
+            def new_seg_id(stream_id: str) -> str:
+                nonlocal seg_counter
+                seg_counter += 1
+                return f"demo-seg-{seg_counter:02d}-{stream_id.replace(' ', '').lower()}"
 
             for pred in predictions:
                 if await request.is_disconnected():
@@ -673,9 +754,11 @@ def create_app(broadcaster: SignalBroadcaster | None = None) -> FastAPI:
                         "data": json.dumps({
                             "event_type": "transcript", "chunk_id": eid,
                             "stream_id": stream_id,
-                            "timestamp": "2025-01-01T00:00:00Z",
+                            "timestamp": now_iso(),
                             "transcript": {
-                                "chunk_id": eid, "language": "en",
+                                "chunk_id": eid,
+                                "source_url": stream_id,
+                                "language": "en",
                                 "language_probability": 1.0, "segments": [],
                                 "full_text": text, "processing_time_s": 0.5,
                             },
@@ -690,7 +773,7 @@ def create_app(broadcaster: SignalBroadcaster | None = None) -> FastAPI:
                         "data": json.dumps({
                             "event_type": "signal", "chunk_id": eid,
                             "stream_id": stream_id,
-                            "timestamp": "2025-01-01T00:00:00Z",
+                            "timestamp": now_iso(),
                             "scoring": {
                                 "chunk_id": eid, "signals": signals,
                                 "model_used": "claude-haiku-4-5 (demo)",
@@ -700,7 +783,135 @@ def create_app(broadcaster: SignalBroadcaster | None = None) -> FastAPI:
                         }),
                     }
 
+                    # ----- Segment state machine (per stream) -----
+                    primary = signals[0]["commodity"]
+                    current = active.get(stream_id)
+                    current_direction = _direction_for(signals)
+
+                    if current is None or current["primary"] != primary:
+                        # Topic shift (or first chunk in the stream) — close the
+                        # previous segment (if any), then open a new one.
+                        if current is not None:
+                            cur_signals: list[dict] = current["signals"]  # type: ignore[assignment]
+                            arc = None
+                            first_dir = current.get("first_direction")
+                            last_dir = _direction_for(cur_signals)
+                            if first_dir and first_dir != last_dir:
+                                arc = f"opened {first_dir}, closed {last_dir}"
+                            closed_seg = _build_segment(
+                                seg_id=str(current["seg_id"]),
+                                stream_id=stream_id,
+                                signals=cur_signals,
+                                chunk_ids=list(current["chunk_ids"]),  # type: ignore[arg-type]
+                                start_ts=str(current["start_ts"]),
+                                text=str(current.get("open_text", "")),
+                                is_closed=True,
+                                end_ts=now_iso(),
+                                close_reason="topic_shift",
+                                sentiment_arc=arc,
+                            )
+                            yield {
+                                "event": "segment.close",
+                                "data": json.dumps({
+                                    "event_type": "segment.close",
+                                    "chunk_id": eid,
+                                    "stream_id": stream_id,
+                                    "timestamp": now_iso(),
+                                    "segment": closed_seg,
+                                }),
+                            }
+                            await asyncio.sleep(0.3)
+
+                        # Open a new segment on the current primary
+                        seg_id = new_seg_id(stream_id)
+                        new_state = {
+                            "seg_id": seg_id,
+                            "primary": primary,
+                            "signals": list(signals),
+                            "chunk_ids": [eid],
+                            "start_ts": now_iso(),
+                            "open_text": text,
+                            "first_direction": current_direction,
+                        }
+                        active[stream_id] = new_state
+                        open_seg = _build_segment(
+                            seg_id=seg_id, stream_id=stream_id,
+                            signals=signals, chunk_ids=[eid],
+                            start_ts=str(new_state["start_ts"]),
+                            text=text, is_closed=False,
+                        )
+                        yield {
+                            "event": "segment.open",
+                            "data": json.dumps({
+                                "event_type": "segment.open",
+                                "chunk_id": eid,
+                                "stream_id": stream_id,
+                                "timestamp": now_iso(),
+                                "segment": open_seg,
+                            }),
+                        }
+                    else:
+                        # Same primary commodity — extend the active segment.
+                        chunk_ids_list: list[str] = list(current["chunk_ids"])  # type: ignore[arg-type]
+                        chunk_ids_list.append(eid)
+                        current["chunk_ids"] = chunk_ids_list
+                        signals_list: list[dict] = list(current["signals"])  # type: ignore[assignment]
+                        signals_list.extend(signals)
+                        current["signals"] = signals_list
+                        update_seg = _build_segment(
+                            seg_id=str(current["seg_id"]),
+                            stream_id=stream_id,
+                            signals=signals_list,
+                            chunk_ids=chunk_ids_list,
+                            start_ts=str(current["start_ts"]),
+                            text=str(current.get("open_text", "")),
+                            is_closed=False,
+                        )
+                        yield {
+                            "event": "segment.update",
+                            "data": json.dumps({
+                                "event_type": "segment.update",
+                                "chunk_id": eid,
+                                "stream_id": stream_id,
+                                "timestamp": now_iso(),
+                                "segment": update_seg,
+                            }),
+                        }
+
                 await asyncio.sleep(2.0)
+
+            # End of demo — close any segments still open so the user sees
+            # them in the "closed history" bucket, not hanging in "active".
+            for stream_id, state in list(active.items()):
+                cur_signals_final: list[dict] = state["signals"]  # type: ignore[assignment]
+                arc_final = None
+                first_dir = state.get("first_direction")
+                last_dir = _direction_for(cur_signals_final)
+                if first_dir and first_dir != last_dir:
+                    arc_final = f"opened {first_dir}, closed {last_dir}"
+                final_seg = _build_segment(
+                    seg_id=str(state["seg_id"]),
+                    stream_id=stream_id,
+                    signals=cur_signals_final,
+                    chunk_ids=list(state["chunk_ids"]),  # type: ignore[arg-type]
+                    start_ts=str(state["start_ts"]),
+                    text=str(state.get("open_text", "")),
+                    is_closed=True,
+                    end_ts=now_iso(),
+                    close_reason="demo_end",
+                    sentiment_arc=arc_final,
+                )
+                yield {
+                    "event": "segment.close",
+                    "data": json.dumps({
+                        "event_type": "segment.close",
+                        "chunk_id": final_seg["segment_id"],
+                        "stream_id": stream_id,
+                        "timestamp": now_iso(),
+                        "segment": final_seg,
+                    }),
+                }
+                await asyncio.sleep(0.2)
 
         return EventSourceResponse(generate())
 
