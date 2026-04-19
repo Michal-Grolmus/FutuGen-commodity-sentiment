@@ -1403,6 +1403,66 @@ async function refreshEvaluation() {
   renderEvalCommodity(containers.commodity, data);
   renderEvalPnl(containers.pnl, data);
   renderEvalHorizonAnalysis(horizonAnalysisEl, data);
+
+  // Segment reality score (separate endpoint)
+  const segStatsEl = document.getElementById("eval-segment-stats-content");
+  if (segStatsEl) {
+    try {
+      const segStats = await fetch("/api/segments/stats").then(r => r.json());
+      renderSegmentStats(segStatsEl, segStats);
+    } catch {
+      segStatsEl.innerHTML = "<p class='hint'>Failed to load segment stats.</p>";
+    }
+  }
+}
+
+function renderSegmentStats(el, stats) {
+  const total = stats.total_segments || 0;
+  if (total === 0) {
+    el.innerHTML = "<p class='hint'>No closed segments yet. Run a live stream for a few minutes to see segments here.</p>";
+    return;
+  }
+
+  const byCom = stats.by_commodity || {};
+  const byStream = stats.by_stream || {};
+  const horizons = ["h1m", "h5m", "h15m", "h1h"];
+
+  const commodityRows = Object.entries(byCom)
+    .sort((a, b) => b[1].total - a[1].total)
+    .map(([name, row]) => {
+      const cells = horizons.map(h => {
+        const acc = (row.accuracy || {})[h];
+        return acc != null ? `${(acc * 100).toFixed(1)}%` : "&mdash;";
+      });
+      return `<tr><td>${escapeHtml(name)}</td><td>${row.total}</td><td>${row.with_reality}</td>${cells.map(c => `<td>${c}</td>`).join("")}</tr>`;
+    }).join("");
+
+  const streamRows = Object.entries(byStream)
+    .sort((a, b) => b[1].total - a[1].total)
+    .map(([name, row]) => {
+      const cells = horizons.map(h => {
+        const acc = (row.accuracy || {})[h];
+        return acc != null ? `${(acc * 100).toFixed(1)}%` : "&mdash;";
+      });
+      const short = name.length > 50 ? name.slice(0, 47) + "..." : name;
+      return `<tr><td title="${escapeHtml(name)}">${escapeHtml(short)}</td><td>${row.total}</td><td>${row.with_reality}</td>${cells.map(c => `<td>${c}</td>`).join("")}</tr>`;
+    }).join("");
+
+  el.innerHTML = `
+    <p><strong>${total}</strong> segments logged. Accuracy = segment's predicted direction matched actual price movement by the horizon (|pct change| &lt; 0.5% counts as neutral).</p>
+
+    <h4 style="margin-top:1rem">Per commodity</h4>
+    <table class="eval-table">
+      <thead><tr><th>Commodity</th><th>Segments</th><th>With reality</th><th>+1m</th><th>+5m</th><th>+15m</th><th>+1h</th></tr></thead>
+      <tbody>${commodityRows}</tbody>
+    </table>
+
+    <h4 style="margin-top:1rem">Per stream</h4>
+    <table class="eval-table">
+      <thead><tr><th>Stream</th><th>Segments</th><th>With reality</th><th>+1m</th><th>+5m</th><th>+15m</th><th>+1h</th></tr></thead>
+      <tbody>${streamRows}</tbody>
+    </table>
+    <p class="hint" style="font-size:0.72rem;margin-top:0.5rem">1-minute bars from Yahoo Finance for last 7 days. For older segments, falls back to daily close. For production-grade intraday validation, upgrade to Polygon.io / Alpha Vantage Premium.</p>`;
 }
 
 function renderEvalHorizonAnalysis(el, data) {

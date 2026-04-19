@@ -119,13 +119,16 @@ class Pipeline:
         logger.info("Pipeline starting...")
 
         try:
+            from src.backtest import segment_reality
             from src.backtest.runner import run_loop as backtest_run_loop
+            segment_reality.ensure_queue()
             tasks = [
                 asyncio.create_task(self._ingest_loop(), name="ingest"),
                 asyncio.create_task(self._transcribe_loop(), name="transcribe"),
                 asyncio.create_task(self._analyze_loop(), name="analyze"),
                 asyncio.create_task(self._broadcast_loop(), name="broadcast"),
                 asyncio.create_task(backtest_run_loop(), name="backtest"),
+                asyncio.create_task(segment_reality.run_worker(), name="segment-reality"),
             ]
             await asyncio.wait_for(
                 asyncio.gather(*tasks, return_exceptions=True),
@@ -261,6 +264,7 @@ class Pipeline:
                 # Segment aggregation: hierarchical super-events
                 if self._aggregator is not None:
                     try:
+                        from src.backtest import segment_reality
                         seg_events = await self._aggregator.process_chunk(
                             stream_id, transcript, list(result.signals),
                         )
@@ -271,6 +275,8 @@ class Pipeline:
                                 stream_id=stream_id,
                                 segment=segment,
                             ))
+                            if kind == "close":
+                                segment_reality.enqueue(segment)
                     except Exception:
                         logger.exception("Segment aggregation error for chunk %s",
                                          result.chunk_id)
@@ -280,6 +286,7 @@ class Pipeline:
         # Pipeline ending — close any open segments cleanly
         if self._aggregator is not None:
             try:
+                from src.backtest import segment_reality
                 closing = await self._aggregator.close_all("pipeline_stopped")
                 for kind, segment in closing:
                     await self._broadcaster.publish(PipelineEvent(
@@ -288,6 +295,8 @@ class Pipeline:
                         stream_id=stream_id,
                         segment=segment,
                     ))
+                    if kind == "close":
+                        segment_reality.enqueue(segment)
             except Exception:
                 logger.exception("Error closing segments on shutdown")
 
