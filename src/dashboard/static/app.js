@@ -1154,10 +1154,17 @@ function segmentTimeframeBadge(seg) {
 // the full segment context (stream, primary + secondaries, sub-signals,
 // chunks, timing). The segment is round-tripped via encodeURIComponent so
 // every attribute the modal needs is available without another fetch.
+//
+// encodeURIComponent does NOT escape single quotes, so a segment whose
+// summary or rationale contains an apostrophe (very common in
+// LLM-generated copy like "It's", "Powell's") would terminate the onclick
+// attribute's JS string early and the button click would throw
+// "missing ) after argument list". Stash the payload in a data-* attribute
+// instead and let the inline handler read it — no quote-escaping fragility.
 function segmentSourceButton(seg) {
   if (!seg || !seg.segment_id) return '';
   const encoded = encodeURIComponent(JSON.stringify(seg));
-  return `<button class="btn-source btn-seg-source" onclick="showSegmentSource('${encoded}')" title="Show segment details">Source</button>`;
+  return `<button class="btn-source btn-seg-source" data-seg-payload="${encoded}" onclick="showSegmentSource(this.dataset.segPayload)" title="Show segment details">Source</button>`;
 }
 
 function toggleChunksExpand(id) {
@@ -1730,6 +1737,9 @@ function toggleCommodity(id) {
 function renderSignalItem(sig) {
   const time = sig._time || "just now";
   const streamId = sig._stream_id || Object.keys(streams)[0] || "";
+  // Stash via data-* attrs — same reasoning as segmentSourceButton: an
+  // apostrophe in sig.rationale survives encodeURIComponent and would
+  // break the inline onclick string otherwise.
   const encoded = encodeURIComponent(JSON.stringify(sig));
   return `<div class="signal-item">
     <span class="signal-dir ${sig.direction}">${sig.direction}</span>
@@ -1739,7 +1749,11 @@ function renderSignalItem(sig) {
     </div>
     <div class="signal-meta">${time}<br>${(sig.timeframe || "").replace("_", " ")}</div>
     <div class="signal-conf">${Math.round((sig.confidence || 0) * 100)}%</div>
-    <button class="btn-source" onclick="showSignalSource('${escapeHtml(streamId)}', '${encoded}')" title="Show source details">Source</button>
+    <button class="btn-source"
+      data-stream-id="${escapeHtml(streamId)}"
+      data-sig-payload="${encoded}"
+      onclick="showSignalSource(this.dataset.streamId, this.dataset.sigPayload)"
+      title="Show source details">Source</button>
   </div>`;
 }
 
