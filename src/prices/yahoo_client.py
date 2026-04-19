@@ -18,19 +18,71 @@ COMMODITY_TICKERS: dict[str, str] = {
 }
 
 
+class _YfinanceNoiseFilter(logging.Filter):
+    """Drop yfinance's misleading 'possibly delisted' ERROR lines.
+
+    The message fires whenever yfinance gets an empty response for a short
+    period (period=1d on a weekend/holiday, stale CDN). Our callers already
+    handle empty DataFrames — they don't need a scary ERROR in the log for
+    something we've gracefully fallen back from.
+    """
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        msg = record.getMessage()
+        if "possibly delisted" in msg:
+            return False
+        # Same pattern, slightly different spelling used by some versions
+        if "No price data found" in msg and "delisted" in msg:
+            return False
+        return True
+
+
+# Install the filter once at module import. yfinance logs through its own
+# top-level logger (and child loggers like yfinance.history); attaching to
+# the parent is enough because logging propagates.
+_yf_logger = logging.getLogger("yfinance")
+if not any(isinstance(f, _YfinanceNoiseFilter) for f in _yf_logger.filters):
+    _yf_logger.addFilter(_YfinanceNoiseFilter())
+
+
+def _fetch_history(ticker: str, period: str) -> object:
+    """yf.Ticker(...).history(period=...) with a fallback to a longer
+    window when the short one comes back empty.
+
+    Futures markets close on weekends + holidays, so period='1d' can be
+    empty late Friday through Monday open. Retrying with '5d' covers the
+    gap without surfacing a user-visible error.
+    """
+    try:
+        hist = yf.Ticker(ticker).history(period=period)
+    except Exception:
+        logger.exception("yfinance history() raised for %s period=%s", ticker, period)
+        return None
+    if hist is None or hist.empty:
+        if period in ("1d", "2d"):
+            try:
+                hist = yf.Ticker(ticker).history(period="5d")
+            except Exception:
+                logger.exception("yfinance fallback history() raised for %s", ticker)
+                return None
+            if hist is None or hist.empty:
+                return None
+        else:
+            return None
+    return hist
+
+
 class PriceClient:
     def get_current_price(self, commodity: str) -> float | None:
         ticker = COMMODITY_TICKERS.get(commodity)
         if not ticker:
             return None
+        hist = _fetch_history(ticker, "1d")
+        if hist is None:
+            return None
         try:
-            data = yf.Ticker(ticker)
-            hist = data.history(period="1d")
-            if hist.empty:
-                return None
             return float(hist["Close"].iloc[-1])
-        except Exception:
-            logger.exception("Failed to fetch price for %s", commodity)
+        except (KeyError, IndexError, ValueError):
             return None
 
     def get_history(self, commodity: str, period: str = "1mo") -> list[dict[str, object]]:
@@ -38,17 +90,16 @@ class PriceClient:
         ticker = COMMODITY_TICKERS.get(commodity)
         if not ticker:
             return []
+        hist = _fetch_history(ticker, period)
+        if hist is None:
+            return []
         try:
-            data = yf.Ticker(ticker)
-            hist = data.history(period=period)
-            if hist.empty:
-                return []
             return [
                 {"date": str(idx.date()), "close": round(float(row["Close"]), 2)}
                 for idx, row in hist.iterrows()
             ]
         except Exception:
-            logger.exception("Failed to fetch history for %s", commodity)
+            logger.exception("Failed to parse history for %s", commodity)
             return []
 
     def get_all_prices(self) -> dict[str, dict[str, object]]:
@@ -78,12 +129,12 @@ class PriceClient:
         ticker = COMMODITY_TICKERS.get(commodity)
         if not ticker:
             return None
+        hist = _fetch_history(ticker, "2d")
+        if hist is None:
+            return None
         try:
-            data = yf.Ticker(ticker)
-            hist = data.history(period="2d")
             if len(hist) < 2:
                 return None
             return float(hist["Close"].iloc[-1] - hist["Close"].iloc[-2])
-        except Exception:
-            logger.exception("Failed to fetch price change for %s", commodity)
+        except (KeyError, IndexError, ValueError):
             return None
