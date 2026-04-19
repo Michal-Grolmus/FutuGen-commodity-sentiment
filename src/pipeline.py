@@ -272,7 +272,26 @@ class Pipeline:
         logger.info("Pipeline stopped and cleaned up.")
 
     def stop(self) -> None:
+        """Signal the pipeline to stop and cancel the run task.
+
+        Safe to call whether the pipeline is running or idle.
+        The run() coroutine will hit CancelledError, finally: _cleanup()
+        will be invoked, which resets _running and kills subprocesses.
+        """
         self._running = False
+        if self._run_task is not None and not self._run_task.done():
+            self._run_task.cancel()
+
+    async def wait_stopped(self, timeout: float = 10.0) -> bool:
+        """Await the run_task's completion after stop(). Returns True if
+        it finished cleanly, False on timeout."""
+        if self._run_task is None or self._run_task.done():
+            return True
+        try:
+            await asyncio.wait_for(self._run_task, timeout=timeout)
+            return True
+        except (TimeoutError, asyncio.CancelledError):
+            return False
 
     def is_running(self) -> bool:
         return self._running

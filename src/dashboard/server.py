@@ -281,6 +281,24 @@ def create_app(broadcaster: SignalBroadcaster | None = None) -> FastAPI:
             return {"ok": False, "error": "Pipeline doesn't support runtime start"}
         return _pipeline_ref.start_with_source(source)
 
+    @app.post("/api/pipeline/stop")
+    async def pipeline_stop() -> dict[str, object]:
+        """Stop the running pipeline and wait briefly for clean shutdown."""
+        if _pipeline_ref is None:
+            return {"ok": False, "error": "Pipeline not initialized"}
+        if not hasattr(_pipeline_ref, "stop"):
+            return {"ok": False, "error": "Pipeline doesn't support stop"}
+        was_running = bool(getattr(_pipeline_ref, "_running", False))
+        _pipeline_ref.stop()
+        stopped_cleanly = True
+        if hasattr(_pipeline_ref, "wait_stopped"):
+            stopped_cleanly = await _pipeline_ref.wait_stopped(timeout=5.0)
+        return {
+            "ok": True,
+            "was_running": was_running,
+            "stopped_cleanly": stopped_cleanly,
+        }
+
     @app.get("/api/pipeline/status")
     async def pipeline_status() -> dict[str, object]:
         """Quick state check: is the pipeline currently processing?"""

@@ -1,6 +1,9 @@
 // ===== STATE =====
 let activeSSE = null;
 let isDemoMode = false;
+// Stream IDs removed via the UI. Buffered SSE events for these IDs are
+// ignored so "Remove" can't be undone by a stale broadcast.
+const removedStreamIds = new Set();
 
 // Multi-select filters (Set of IDs); empty set = nothing selected
 const selectedStreamIds = new Set();
@@ -594,6 +597,8 @@ async function startPipelineWithSource(source) {
 
 // ===== STREAM MANAGEMENT =====
 function addStream(id, url, type) {
+  // Adding a stream again clears the removal blocklist for it
+  removedStreamIds.delete(id);
   if (!streams[id]) {
     streams[id] = { name: id, url, type, transcript: "", signals: [] };
     selectedStreamIds.add(id);  // auto-select new streams
@@ -704,10 +709,23 @@ function waitingTranscriptMessage(s) {
   return '<span style="color:#8b949e">Waiting for transcript...</span>';
 }
 
-function toggleStopStream(id) {
+async function toggleStopStream(id) {
   if (!streams[id]) return;
-  streams[id].stopped = !streams[id].stopped;
+  const wasStopped = streams[id].stopped;
+  streams[id].stopped = !wasStopped;
   renderStreams();
+  if (!wasStopped) {
+    // Was running → pause (stop backend pipeline)
+    try {
+      await fetch("/api/pipeline/stop", { method: "POST" });
+      setStatus("Paused", "status-connecting");
+    } catch (e) {
+      console.warn("stop failed", e);
+    }
+  } else {
+    // Was paused → resume (restart pipeline on the same source)
+    await startPipelineWithSource(streams[id].url);
+  }
 }
 
 function toggleStreamSignals(id) {
@@ -715,13 +733,29 @@ function toggleStreamSignals(id) {
   if (el) el.classList.toggle("hidden");
 }
 
-function removeStream(id) {
+async function removeStream(id) {
   if (!streams[id]) return;
-  if (!confirm(`Remove stream "${streams[id].name}"? Transcript and signals will be cleared.`)) return;
+  if (!confirm(`Remove stream "${streams[id].name}"? Transcript and signals will be cleared, and the backend pipeline will stop.`)) return;
+  const url = streams[id].url;
   delete streams[id];
   selectedStreamIds.delete(id);
+  removedStreamIds.add(id);  // block buffered SSE events from re-creating this card
   renderStreamFilters();
   renderStreams();
+  // Stop the backend pipeline — otherwise it keeps transcribing and
+  // re-populating the stream map via SSE events.
+  try {
+    const res = await fetch("/api/pipeline/stop", { method: "POST" });
+    const data = await res.json();
+    console.log("[pipeline/stop]", data);
+    if (data.was_running) {
+      setStatus(`Stopped (was processing ${url})`, "status-connecting");
+    } else {
+      setStatus("Ready", "status-ok");
+    }
+  } catch (e) {
+    console.warn("stop failed", e);
+  }
 }
 
 // ===== COMMODITY VIEW =====
@@ -950,6 +984,7 @@ function connect(endpoint) {
     const t = event.transcript;
     if (!t) return;
     const streamId = event.stream_id || Object.keys(streams)[0];
+    if (removedStreamIds.has(streamId)) return;  // user removed it — don't resurrect
     if (!streams[streamId]) addStream(streamId, streamId, "demo");
     if (streams[streamId].stopped) return;  // skip transcript update if stopped
     streams[streamId].transcript = t.full_text;
@@ -966,6 +1001,7 @@ function connect(endpoint) {
     const scoring = event.scoring;
     if (!scoring) return;
     const streamId = event.stream_id || Object.keys(streams)[0];
+    if (removedStreamIds.has(streamId)) return;  // user removed it — don't resurrect
     if (!streams[streamId]) addStream(streamId, streamId, "demo");
     if (streams[streamId].stopped) return;  // skip signals + commodity events when paused
 
