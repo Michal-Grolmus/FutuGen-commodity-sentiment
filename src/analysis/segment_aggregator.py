@@ -236,7 +236,37 @@ class SegmentAggregator:
     async def _close_segment(
         self, active: _ActiveSegment, reason: str,
     ) -> tuple[str, Segment]:
-        """Persist + return close event for a segment."""
+        """Persist + return close event for a segment.
+
+        If the segment hasn't had an LLM analysis yet (short VOD that ends
+        before check_interval_chunks is reached), run one final verdict now
+        so the close snapshot carries a proper summary + direction instead
+        of "neutral 0% / Analyzing…" — otherwise users see stuck placeholder
+        cards for every commodity mentioned once in a short clip.
+        """
+        if active.all_chunks and not active.summary:
+            try:
+                verdict = await self._llm_verdict(active)
+                active.summary = verdict.get("summary", active.summary) or active.summary
+                active.direction = self._coerce_direction(
+                    verdict.get("direction"), active.direction,
+                )
+                active.confidence = self._weighted_confidence(
+                    active, verdict.get("confidence", active.confidence),
+                )
+                active.rationale = verdict.get("rationale", active.rationale) or active.rationale
+                active.sentiment_arc = verdict.get("sentiment_arc") or active.sentiment_arc
+                tf = verdict.get("timeframe")
+                if tf in ("short_term", "medium_term"):
+                    active.timeframe = Timeframe(tf)
+                active.chunks_since_last_check.clear()
+            except Exception:
+                logger.exception(
+                    "Final close-time LLM verdict failed (segment=%s); "
+                    "closing with placeholder state",
+                    active.segment_id,
+                )
+
         snapshot = self._snapshot(active)
         snapshot.is_closed = True
         snapshot.end_time = datetime.now(UTC)

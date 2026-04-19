@@ -278,6 +278,57 @@ class Pipeline:
             except Exception:
                 logger.exception("Error closing source %s", url)
             logger.info("Source ended: %s", url)
+            # Schedule a delayed segment close for this stream. Without this,
+            # any segments opened for this source stay "Active / Analyzing…"
+            # forever because the aggregator never sees another chunk to
+            # trigger a check or topic shift. The delay (~12s) gives any
+            # in-flight chunks time to flow through transcribe → analyze →
+            # broadcast before we close; after close they'd start a new
+            # (and also never-closing) segment.
+            if self._running:
+                asyncio.create_task(
+                    self._close_stream_segments_delayed(url),
+                    name=f"close-segs:{url[:40]}",
+                )
+
+    async def _close_stream_segments_delayed(
+        self, url: str, delay: float = 12.0,
+    ) -> None:
+        """Close active segments for a stream after its source ended.
+
+        Runs as a background task: waits for in-flight chunks to drain, then
+        calls aggregator.close_stream() and broadcasts the close events. A
+        final LLM verdict inside _close_segment fills in summary + direction
+        for segments that never reached the 6-chunk check interval.
+        """
+        await asyncio.sleep(delay)
+        if self._aggregator is None:
+            return
+        # Guard: if the user added the same URL again in the meantime, the
+        # source is active once more — leave its segments alone.
+        if url in self._sources:
+            return
+        try:
+            events = await self._aggregator.close_stream(url, reason="stream_ended")
+        except Exception:
+            logger.exception("Delayed segment close failed for %s", url)
+            return
+        if not events:
+            return
+        from src.backtest import segment_reality
+        for kind, segment in events:
+            try:
+                await self._broadcaster.publish(PipelineEvent(
+                    event_type=f"segment.{kind}",
+                    chunk_id=segment.segment_id,
+                    stream_id=url,
+                    segment=segment,
+                ))
+                if kind == "close":
+                    segment_reality.enqueue(segment)
+            except Exception:
+                logger.exception("Failed to broadcast stream_ended segment close")
+        logger.info("Closed %d segment(s) on stream end: %s", len(events), url)
 
     async def _transcribe_loop(self) -> None:
         assert self._transcriber is not None

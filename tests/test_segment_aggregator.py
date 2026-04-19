@@ -199,6 +199,67 @@ async def test_close_all_ends_everything(small_config):
 
 
 @pytest.mark.asyncio
+async def test_close_runs_final_llm_verdict_on_unanalyzed_segment(small_config):
+    """Short VOD ends before check_interval_chunks — close-time verdict should
+    still populate summary + direction instead of leaving them blank."""
+    verdicts = [{
+        "continue": False,  # irrelevant here; close is forced
+        "summary": "Gold rallied on central bank demand",
+        "direction": "bullish",
+        "confidence": 0.8,
+        "rationale": "consistent buy signals in every chunk",
+        "timeframe": "short_term",
+    }]
+    agg = SegmentAggregator(_make_llm_client(verdicts), "anthropic", small_config)
+
+    # 2 chunks with signals (below the 3-chunk check interval) so the LLM
+    # has never run during normal process_chunk flow.
+    await agg.process_chunk("stream_a", _transcript("c1"), [_signal("gold")])
+    await agg.process_chunk("stream_a", _transcript("c2"), [_signal("gold")])
+    # Sanity: segment is open with default state (no summary yet)
+    key = ("stream_a", "gold")
+    active = agg._active[key]
+    assert active.summary == ""
+    assert active.direction == Direction.NEUTRAL
+
+    closed = await agg.close_stream("stream_a", reason="stream_ended")
+    assert len(closed) == 1
+    kind, seg = closed[0]
+    assert kind == "close"
+    # Final verdict populated the snapshot so the UI shows real content
+    # instead of "neutral 0% / Analyzing…".
+    assert seg.summary == "Gold rallied on central bank demand"
+    assert seg.direction == Direction.BULLISH
+    assert seg.confidence > 0
+    assert seg.close_reason == "stream_ended"
+
+
+@pytest.mark.asyncio
+async def test_close_preserves_existing_verdict_when_already_analyzed(small_config):
+    """If the LLM already ran mid-segment, close shouldn't re-run it."""
+    mid_verdict = {
+        "continue": True, "summary": "mid-segment summary",
+        "direction": "bullish", "confidence": 0.7,
+        "rationale": "mid rationale", "timeframe": "short_term",
+    }
+    # Only one verdict configured — a second LLM call would wrap around and
+    # be a bug, so count must stay at 1.
+    agg = SegmentAggregator(_make_llm_client([mid_verdict]), "anthropic", small_config)
+
+    # 3 chunks == check_interval_chunks → mid-segment verdict fires
+    for i in range(3):
+        await agg.process_chunk("stream_a", _transcript(f"c{i}"), [_signal("gold")])
+
+    active = agg._active[("stream_a", "gold")]
+    assert active.summary == "mid-segment summary"
+
+    closed = await agg.close_stream("stream_a", reason="stream_ended")
+    _, seg = closed[0]
+    # Existing summary kept — no second verdict
+    assert seg.summary == "mid-segment summary"
+
+
+@pytest.mark.asyncio
 async def test_secondary_commodity_tracked(small_config):
     """When a segment sees both gold and silver signals, silver should be
     listed as secondary (or start its own parallel segment)."""
