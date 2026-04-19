@@ -137,3 +137,138 @@ def test_pipeline_settings_no_pipeline(client):
     r = client.post("/api/settings/pipeline", json={"whisper_model": "small"})
     assert r.status_code == 200
     assert r.json()["ok"] is False
+
+
+# ===== Multi-source pipeline endpoints =====
+
+class _FakeMultiSourcePipeline:
+    """Fake Pipeline exposing the new multi-source API."""
+    def __init__(self):
+        self._settings = SimpleNamespace(
+            chunk_duration_s=10,
+            whisper_model_size="small",
+            whisper_language="en",
+            input_file="",
+            stream_url="",
+        )
+        self._running = False
+        self._sources: dict = {}
+        self.add_calls: list[str] = []
+        self.remove_calls: list[str] = []
+        self.stop_called = False
+
+    async def add_source(self, url: str):
+        self.add_calls.append(url)
+        if url in self._sources:
+            return {"ok": True, "started": False, "reason": "already active"}
+        self._sources[url] = object()
+        self._running = True
+        return {"ok": True, "started": True, "reason": "launched"}
+
+    async def remove_source(self, url: str):
+        self.remove_calls.append(url)
+        if url not in self._sources:
+            return {"ok": False, "reason": "not active"}
+        del self._sources[url]
+        if not self._sources:
+            self._running = False
+        return {"ok": True}
+
+    def active_sources(self):
+        return list(self._sources.keys())
+
+    def stop(self):
+        self.stop_called = True
+        self._sources.clear()
+        self._running = False
+
+    async def wait_stopped(self, timeout: float = 10.0):
+        return True
+
+
+@pytest.fixture
+def multisource_client():
+    broadcaster = SignalBroadcaster()
+    app = create_app(broadcaster)
+    fake = _FakeMultiSourcePipeline()
+    set_pipeline(fake)
+    try:
+        yield TestClient(app), fake
+    finally:
+        dashboard_server._pipeline_ref = None
+
+
+def test_pipeline_start_adds_source(multisource_client):
+    client, fake = multisource_client
+    r = client.post("/api/pipeline/start", json={"source": "https://example.com/stream1"})
+    assert r.status_code == 200
+    data = r.json()
+    assert data["ok"] is True
+    assert data["started"] is True
+    assert fake.add_calls == ["https://example.com/stream1"]
+
+
+def test_pipeline_start_multiple_sources_concurrent(multisource_client):
+    """Adding a second source returns ok=True — no 'already running' error.
+
+    This is the regression fix: previously the pipeline errored out with
+    'pipeline already running' when a user tried to add a second stream.
+    """
+    client, fake = multisource_client
+    urls = [
+        "https://www.youtube.com/watch?v=X_A08N9GO9g",
+        "https://www.youtube.com/watch?v=Ao6bO2CXm0E",
+        "https://www.bloomberg.com/live",
+    ]
+    for url in urls:
+        r = client.post("/api/pipeline/start", json={"source": url})
+        assert r.status_code == 200
+        assert r.json()["ok"] is True
+    assert fake.active_sources() == urls
+    status = client.get("/api/pipeline/status").json()
+    assert set(status["sources"]) == set(urls)
+    assert status["running"] is True
+
+
+def test_pipeline_stop_single_source(multisource_client):
+    """POST /api/pipeline/stop with a source URL stops only that one."""
+    client, fake = multisource_client
+    # Add 2 sources
+    client.post("/api/pipeline/start", json={"source": "url-A"})
+    client.post("/api/pipeline/start", json={"source": "url-B"})
+    # Remove only url-A
+    r = client.post("/api/pipeline/stop", json={"source": "url-A"})
+    assert r.status_code == 200
+    data = r.json()
+    assert data["ok"] is True
+    assert data["scope"] == "source"
+    assert fake.remove_calls == ["url-A"]
+    # url-B should still be active
+    assert fake.active_sources() == ["url-B"]
+    assert fake.stop_called is False
+
+
+def test_pipeline_stop_all(multisource_client):
+    """POST /api/pipeline/stop without a source stops everything."""
+    client, fake = multisource_client
+    client.post("/api/pipeline/start", json={"source": "url-A"})
+    client.post("/api/pipeline/start", json={"source": "url-B"})
+    r = client.post("/api/pipeline/stop", json={})
+    assert r.status_code == 200
+    data = r.json()
+    assert data["ok"] is True
+    assert data["scope"] == "all"
+    assert fake.stop_called is True
+    assert fake.active_sources() == []
+
+
+def test_pipeline_start_duplicate_source_is_noop(multisource_client):
+    client, fake = multisource_client
+    client.post("/api/pipeline/start", json={"source": "url-A"})
+    r = client.post("/api/pipeline/start", json={"source": "url-A"})
+    assert r.status_code == 200
+    data = r.json()
+    assert data["ok"] is True
+    assert data["started"] is False
+    # add_source was called twice but only one source is active
+    assert fake.active_sources() == ["url-A"]

@@ -40,6 +40,7 @@ class TranscriptSegment(BaseModel):
 
 class Transcript(BaseModel):
     chunk_id: str
+    source_url: str = ""  # originating stream URL or file path (for multi-source routing)
     language: str
     language_probability: float
     segments: list[TranscriptSegment]

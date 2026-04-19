@@ -375,7 +375,30 @@ a.stream-url:hover { text-decoration: underline; }
   padding: 0.25rem 0; margin-bottom: 0.35rem;
 }
 .chunks-toggle:hover { color: #79b8ff; }
-.chunks-visible { display: flex; flex-direction: column; gap: 0.4rem; }
+.chunks-visible {
+  display: flex; flex-direction: column; gap: 0.4rem;
+  /* Relative so the oldest chunk's top-fade overlay can anchor to the panel. */
+  position: relative;
+}
+
+/* Visual hierarchy: current chunk = full contrast, second-newest = dimmed,
+   oldest visible = dimmer + gradient fade at the top so it reads as
+   "sliding out of view into the collapsed history". */
+.chunks-visible > .chunk-row:nth-last-child(1) {
+  /* Current — full contrast, no tweak */
+}
+.chunks-visible > .chunk-row:nth-last-child(2) {
+  opacity: 0.72;
+}
+.chunks-visible > .chunk-row:nth-last-child(3) {
+  opacity: 0.48;
+  /* Top-edge gradient: fades upward by ~50% so the user's eye tracks down
+     to the current chunk and understands older ones are heading into the
+     collapsed "Show N older chunks" history. mask-image gives a true alpha
+     fade even on backgrounds that aren't a flat solid color. */
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 55%);
+          mask-image: linear-gradient(to bottom, transparent 0, #000 55%);
+}
 
 /* A single chunk row with marker on the left */
 .chunk-row {
@@ -384,6 +407,7 @@ a.stream-url:hover { text-decoration: underline; }
   border-radius: 4px;
   background: #0d1117;
   animation: chunk-fade-in 0.4s ease-out;
+  transition: opacity 0.25s ease;
 }
 .chunk-row.chunk-has-event { background: #141a22; border-left: 3px solid transparent; }
 .chunk-marker, .chunk-marker-none {

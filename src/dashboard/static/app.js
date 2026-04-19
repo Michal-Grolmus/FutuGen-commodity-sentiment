@@ -715,13 +715,9 @@ async function startAllSavedStreams() {
     alert("All saved streams are already active.");
     return;
   }
-  // Pipeline supports one source at a time: launch the first, inform about the rest
-  await startPipelineWithSource(toStart[0]);
-  if (toStart.length > 1) {
-    alert(`Started pipeline on the first of ${toStart.length} streams (${toStart[0]}).\n` +
-          `The remaining ${toStart.length - 1} are listed in the UI but not yet processed — ` +
-          `multi-source support is a future upgrade.`);
-  }
+  // Multi-source backend: kick off every URL. Each gets its own ingest task
+  // that feeds the shared transcribe/analyze/broadcast workers.
+  await Promise.all(toStart.map(url => startPipelineWithSource(url)));
 }
 
 function showAddStreamDialog() {
@@ -748,11 +744,19 @@ async function submitAddStream() {
   await startPipelineWithSource(url);
 }
 
-async function startPipelineWithSource(source, { retryAfterStop = true } = {}) {
-  // Safety net: without an open SSE, events produced by the pipeline never
-  // reach the UI and the user sees "Waiting for transcript..." forever.
-  if (!activeSSE) connect("/api/events");
-  setStatus("Starting pipeline (10–30s for live streams)...", "status-connecting");
+async function startPipelineWithSource(source) {
+  // If we're still on the demo SSE, switch to the live events endpoint so
+  // chunks from the newly-added source actually reach the UI. (Demo mode
+  // only replays 3 fixed streams; custom ones need the real pipeline.)
+  if (isDemoMode) {
+    isDemoMode = false;
+    connect("/api/events");
+  } else if (!activeSSE) {
+    // Safety net: without an open SSE, events produced by the pipeline never
+    // reach the UI and the user sees "Waiting for transcript..." forever.
+    connect("/api/events");
+  }
+  setStatus("Starting pipeline (10\u201330s for live streams)\u2026", "status-connecting");
   try {
     const res = await fetch("/api/pipeline/start", {
       method: "POST",
@@ -761,28 +765,16 @@ async function startPipelineWithSource(source, { retryAfterStop = true } = {}) {
     });
     const data = await res.json();
     console.log("[pipeline/start]", data);
-    if (data.started) {
+    if (data.ok) {
+      // Multi-source backend: ok=true for both "launched" and "already active"
       setStatus("Processing", "status-ok");
       return;
     }
-    if (data.reason === "pipeline already running" && retryAfterStop) {
-      // Ask the user whether to swap: pipeline supports one source at a time.
-      const ok = confirm(
-        "Pipeline is already processing another stream.\n" +
-        "Stop it and start this one instead?",
-      );
-      if (!ok) { setStatus("Ready", "status-ok"); return; }
-      await fetch("/api/pipeline/stop", { method: "POST" });
-      // Re-attempt once, without retry loop
-      return await startPipelineWithSource(source, { retryAfterStop: false });
-    }
-    if (data.reason === "pipeline already running") {
-      // Pipeline is busy with a previous source; inform the user
-      setStatus("Busy: another stream already running", "status-connecting");
-      alert("Pipeline is already processing another stream.\n" +
-            "Currently only one source at a time is supported. Restart to change it.");
-    } else if (data.error) {
+    if (data.error) {
       alert("Could not start pipeline: " + data.error);
+    } else if (data.reason) {
+      // Validation issue (e.g. empty source)
+      alert("Could not start: " + data.reason);
     }
   } catch (e) {
     alert("Failed to contact server: " + e.message);
@@ -1042,12 +1034,26 @@ function toggleChunksExpand(id) {
 const DEMO_STREAM_NAMES = new Set(["Bloomberg Live", "CNBC Markets", "Yahoo Finance"]);
 
 function waitingTranscriptMessage(s) {
-  // If we're in demo mode and this stream won't receive demo events, tell user how to activate
+  // Demo mode replays pre-recorded events for 3 fixed streams. A custom
+  // stream added during demo mode needs the live SSE to see its chunks —
+  // transcription itself is free (local Whisper), only the commodity
+  // scoring step needs an LLM API key.
   if (isDemoMode && !DEMO_STREAM_NAMES.has(s.name)) {
-    return `<span style="color:#f0b400">Demo mode doesn't transcribe custom streams.</span>
-      <span style="color:#c9d1d9">To start real transcription, <a href="#" onclick="showView('settings');return false;" class="link">add an API key in Settings</a> and restart the pipeline with this URL.</span>`;
+    return `<span style="color:#f0b400">Demo is replaying fixed streams \u2014 custom streams route through the live pipeline.</span>
+      <span style="color:#c9d1d9"><a href="#" onclick="exitDemoAndConnectLive();return false;" class="link">Exit demo &amp; start transcription</a>
+      (Whisper runs locally, free; commodity signals need an <a href="#" onclick="showView('settings');return false;" class="link">API key</a>).</span>`;
   }
-  return '<span style="color:#8b949e">Waiting for transcript...</span>';
+  return '<span style="color:#8b949e">Waiting for transcript\u2026</span>';
+}
+
+// Exit demo mode and connect to the live /api/events stream so the custom
+// stream just added starts producing chunks in the UI.
+function exitDemoAndConnectLive() {
+  isDemoMode = false;
+  setStatus("Connecting to live pipeline\u2026", "status-connecting");
+  connect("/api/events");
+  // Re-render so the waiting message updates on every stream card
+  renderStreams();
 }
 
 async function toggleStopStream(id) {
@@ -1076,20 +1082,27 @@ function toggleStreamSignals(id) {
 
 async function removeStream(id) {
   if (!streams[id]) return;
-  if (!confirm(`Remove stream "${streams[id].name}"? Transcript and signals will be cleared, and the backend pipeline will stop.`)) return;
+  if (!confirm(`Remove stream "${streams[id].name}"? Transcript and signals will be cleared.`)) return;
   const url = streams[id].url;
   delete streams[id];
   selectedStreamIds.delete(id);
   removedStreamIds.add(id);  // block buffered SSE events from re-creating this card
   renderStreamFilters();
   renderStreams();
-  // Stop the backend pipeline — otherwise it keeps transcribing and
-  // re-populating the stream map via SSE events.
+  // Stop just this specific source on the backend — other streams keep
+  // running. The server supports per-source removal when the payload has
+  // a "source" URL; omit it to stop everything.
   try {
-    const res = await fetch("/api/pipeline/stop", { method: "POST" });
+    const res = await fetch("/api/pipeline/stop", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ source: url }),
+    });
     const data = await res.json();
     console.log("[pipeline/stop]", data);
-    if (data.was_running) {
+    if (data.scope === "source" && data.was_running) {
+      setStatus(`Stopped "${streams[id]?.name || url}"`, "status-connecting");
+    } else if (data.was_running) {
       setStatus(`Stopped (was processing ${url})`, "status-connecting");
     } else {
       setStatus("Ready", "status-ok");

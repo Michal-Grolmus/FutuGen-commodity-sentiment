@@ -99,6 +99,7 @@ class Transcriber:
 
         return Transcript(
             chunk_id=chunk.chunk_id,
+            source_url=chunk.source_url,
             language=info.language,
             language_probability=info.language_probability,
             segments=segments,

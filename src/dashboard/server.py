@@ -319,49 +319,90 @@ def create_app(broadcaster: SignalBroadcaster | None = None) -> FastAPI:
 
     @app.post("/api/pipeline/start")
     async def pipeline_start(payload: dict[str, object]) -> dict[str, object]:
-        """Attach a source URL or file path and start the pipeline.
+        """Add a source to the pipeline (multi-source supported).
 
-        Called from the dashboard's "Add Stream" / Saved Streams flow.
-        If the pipeline is already running, returns reason="pipeline already running".
+        Called from the dashboard's "Add Stream" / Saved Streams flow. Adding
+        the same URL twice is a no-op (returns reason="already active").
         """
         source = str(payload.get("source", "")).strip()
         if not source:
             return {"ok": False, "error": "source is required"}
         if _pipeline_ref is None:
             return {"ok": False, "error": "Pipeline not initialized"}
-        if not hasattr(_pipeline_ref, "start_with_source"):
-            return {"ok": False, "error": "Pipeline doesn't support runtime start"}
-        return _pipeline_ref.start_with_source(source)
+        # Prefer async add_source() when available (new multi-source API).
+        # Fall back to the sync shim for any older subclass/mock.
+        if hasattr(_pipeline_ref, "add_source"):
+            return await _pipeline_ref.add_source(source)
+        if hasattr(_pipeline_ref, "start_with_source"):
+            return _pipeline_ref.start_with_source(source)
+        return {"ok": False, "error": "Pipeline doesn't support runtime start"}
 
     @app.post("/api/pipeline/stop")
-    async def pipeline_stop() -> dict[str, object]:
-        """Stop the running pipeline and wait briefly for clean shutdown."""
+    async def pipeline_stop(payload: dict[str, object] | None = None) -> dict[str, object]:
+        """Stop sources.
+
+        - With payload {"source": URL}: stop that specific stream, leave
+          the rest running. Used by the per-card Remove button.
+        - Without payload (or empty): stop ALL sources and drain workers.
+          Used for hard reset / shutdown.
+        """
         if _pipeline_ref is None:
             return {"ok": False, "error": "Pipeline not initialized"}
+        source = ""
+        if payload is not None:
+            source = str(payload.get("source", "")).strip()
+
+        if source and hasattr(_pipeline_ref, "remove_source"):
+            # Per-stream stop — other sources keep running
+            result = await _pipeline_ref.remove_source(source)
+            return {
+                "ok": bool(result.get("ok")),
+                "scope": "source",
+                "source": source,
+                "was_running": bool(result.get("ok")),
+                "stopped_cleanly": True,
+                **({"reason": result["reason"]} if "reason" in result else {}),
+            }
+
+        # Full stop
         if not hasattr(_pipeline_ref, "stop"):
             return {"ok": False, "error": "Pipeline doesn't support stop"}
-        was_running = bool(getattr(_pipeline_ref, "_running", False))
+        was_running = bool(getattr(_pipeline_ref, "_running", False)) or bool(
+            getattr(_pipeline_ref, "_sources", {})
+        )
         _pipeline_ref.stop()
         stopped_cleanly = True
         if hasattr(_pipeline_ref, "wait_stopped"):
             stopped_cleanly = await _pipeline_ref.wait_stopped(timeout=5.0)
         return {
             "ok": True,
+            "scope": "all",
             "was_running": was_running,
             "stopped_cleanly": stopped_cleanly,
         }
 
     @app.get("/api/pipeline/status")
     async def pipeline_status() -> dict[str, object]:
-        """Quick state check: is the pipeline currently processing?"""
+        """Report active source list + worker state."""
         if _pipeline_ref is None:
-            return {"running": False, "source": None, "reason": "no pipeline"}
-        settings = getattr(_pipeline_ref, "_settings", None)
+            return {"running": False, "sources": [], "reason": "no pipeline"}
         running = bool(getattr(_pipeline_ref, "_running", False))
-        source = None
-        if settings is not None:
-            source = settings.input_file or settings.stream_url or None
-        return {"running": running, "source": source}
+        sources: list[str] = []
+        if hasattr(_pipeline_ref, "active_sources"):
+            sources = list(_pipeline_ref.active_sources())
+        else:
+            # Fallback for legacy mocks: derive from settings
+            settings = getattr(_pipeline_ref, "_settings", None)
+            if settings is not None:
+                s = settings.input_file or settings.stream_url or None
+                if s:
+                    sources = [s]
+        return {
+            "running": running or bool(sources),
+            "sources": sources,
+            # Legacy scalar for older UI code (first active source)
+            "source": sources[0] if sources else None,
+        }
 
     @app.post("/api/settings/api-key")
     async def set_api_key(payload: dict[str, object]) -> dict[str, object]:

@@ -36,9 +36,11 @@ class Pipeline:
     ) -> None:
         self._settings = settings
         self._broadcaster = broadcaster
+        # Workers alive? Set True once _start_workers runs, False after drain.
         self._running = False
 
-        # Queues
+        # Queues — shared by all sources. Created once and reused across
+        # add_source / remove_source cycles.
         self._audio_q: asyncio.Queue[AudioChunk | None] = asyncio.Queue(
             maxsize=settings.max_queue_size
         )
@@ -51,8 +53,7 @@ class Pipeline:
             asyncio.Queue(maxsize=settings.max_queue_size)
         )
 
-        # Components (initialized lazily in run)
-        self._source: AudioSource | None = None
+        # Components (initialized lazily by _start_workers)
         self._transcriber: Transcriber | None = None
         self._extractor: EntityExtractor | None = None
         self._scorer: ImpactScorer | None = None
@@ -61,21 +62,26 @@ class Pipeline:
         self._notifier: SlackNotifier | None = None
         self._price_client: PriceClient | None = None
         self._tmp_dirs: list[str] = []
-        # For runtime start / restart from the dashboard
+
+        # Multi-source support: every active stream/file has its own ingest
+        # task pushing chunks into the shared _audio_q. Map: url -> (source, task)
+        self._sources: dict[str, tuple[AudioSource, asyncio.Task[None]]] = {}
+        # Shared worker tasks (transcribe/analyze/broadcast + backtest runners)
+        self._worker_tasks: list[asyncio.Task[None]] = []
+        # Legacy: the task created by run() for the blocking one-shot path.
         self._run_task: asyncio.Task[None] | None = None
 
-    async def run(self) -> None:
-        self._running = True
+    # ------------------------------------------------------------------
+    # Shared-worker startup (idempotent; called by run() and add_source())
+    # ------------------------------------------------------------------
+    async def _start_workers(self) -> None:
+        """Initialize transcribe/analyze/broadcast workers (idempotent).
 
-        # Build audio source
-        if self._settings.input_file:
-            self._source = FileIngestor(self._settings.input_file, self._settings.chunk_duration_s)
-            logger.info("Using file source: %s", self._settings.input_file)
-        elif self._settings.stream_url:
-            self._source = StreamIngestor(self._settings.stream_url, self._settings.chunk_duration_s)
-            logger.info("Using stream source: %s", self._settings.stream_url)
-        else:
-            logger.error("No input source configured. Set INPUT_FILE or STREAM_URL.")
+        The shared workers stay alive while any source is active, or until
+        stop() signals full shutdown. Individual sources come and go via
+        add_source() / remove_source() without touching the workers.
+        """
+        if self._running:
             return
 
         # Build STT
@@ -113,50 +119,165 @@ class Pipeline:
                 self._settings.notification_confidence_threshold,
             )
 
-        # Terminal display
         self._terminal = TerminalDisplay()
 
-        logger.info("Pipeline starting...")
+        from src.backtest import segment_reality
+        from src.backtest.runner import run_loop as backtest_run_loop
+        segment_reality.ensure_queue()
 
+        self._running = True
+        self._worker_tasks = [
+            asyncio.create_task(self._transcribe_loop(), name="transcribe"),
+            asyncio.create_task(self._analyze_loop(), name="analyze"),
+            asyncio.create_task(self._broadcast_loop(), name="broadcast"),
+            asyncio.create_task(backtest_run_loop(), name="backtest"),
+            asyncio.create_task(segment_reality.run_worker(), name="segment-reality"),
+        ]
+        logger.info("Pipeline workers started.")
+
+    # ------------------------------------------------------------------
+    # Source lifecycle (multi-stream support)
+    # ------------------------------------------------------------------
+    async def add_source(self, url: str) -> dict[str, object]:
+        """Add a new source (URL or file path) to the running pipeline.
+
+        Starts the shared workers if not yet running. Returns immediately —
+        the ingest task runs in the background and pushes chunks onto the
+        shared queue as they're produced.
+        """
+        url = (url or "").strip()
+        if not url:
+            return {"ok": False, "started": False, "reason": "source is empty"}
+        if url in self._sources:
+            return {"ok": True, "started": False, "reason": "already active"}
+
+        # Build the right source type
+        if url.startswith(("http://", "https://", "rtmp://", "rtmps://", "hls://")):
+            source: AudioSource = StreamIngestor(url, self._settings.chunk_duration_s)
+            logger.info("Adding stream source: %s", url)
+        else:
+            source = FileIngestor(url, self._settings.chunk_duration_s)
+            logger.info("Adding file source: %s", url)
+
+        # Make sure the shared workers are alive
+        await self._start_workers()
+
+        task = asyncio.create_task(
+            self._ingest_from_source(url, source),
+            name=f"ingest:{url[:60]}",
+        )
+        self._sources[url] = (source, task)
+        return {"ok": True, "started": True, "reason": "launched"}
+
+    async def remove_source(self, url: str) -> dict[str, object]:
+        """Stop a specific source without affecting others.
+
+        Cancels its ingest task, closes the AudioSource, and removes it from
+        the active set. Workers keep running for remaining sources.
+        """
+        entry = self._sources.pop(url, None)
+        if entry is None:
+            return {"ok": False, "reason": "not active"}
+        source, task = entry
+        task.cancel()
         try:
-            from src.backtest import segment_reality
-            from src.backtest.runner import run_loop as backtest_run_loop
-            segment_reality.ensure_queue()
-            tasks = [
-                asyncio.create_task(self._ingest_loop(), name="ingest"),
-                asyncio.create_task(self._transcribe_loop(), name="transcribe"),
-                asyncio.create_task(self._analyze_loop(), name="analyze"),
-                asyncio.create_task(self._broadcast_loop(), name="broadcast"),
-                asyncio.create_task(backtest_run_loop(), name="backtest"),
-                asyncio.create_task(segment_reality.run_worker(), name="segment-reality"),
-            ]
-            await asyncio.wait_for(
-                asyncio.gather(*tasks, return_exceptions=True),
-                timeout=self._settings.pipeline_timeout_s,
-            )
+            await source.close()
+        except Exception:
+            logger.exception("Error closing source %s", url)
+        logger.info("Removed source: %s", url)
+        return {"ok": True}
+
+    def active_sources(self) -> list[str]:
+        """List URLs of all currently active sources."""
+        return list(self._sources.keys())
+
+    # Legacy alias kept so the dashboard server keeps compiling; now an
+    # additive operation, not a swap.
+    def start_with_source(self, source: str) -> dict[str, object]:
+        """Additive: schedule a new source. Does NOT replace existing ones.
+
+        For backward compat with the dashboard/server API. The actual work
+        happens in add_source() which is invoked as a background task so this
+        method remains synchronous (matches the old signature).
+        """
+        source = (source or "").strip()
+        if not source:
+            return {"ok": False, "started": False, "reason": "source is empty"}
+        if source in self._sources:
+            return {"ok": True, "started": False, "reason": "already active"}
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            return {"ok": False, "started": False, "reason": "no running loop"}
+        # Kick off add_source in the background; the HTTP handler returns
+        # immediately and the UI gets progress via SSE.
+        loop.create_task(self.add_source(source), name=f"add_source:{source[:40]}")
+        return {"ok": True, "started": True, "reason": "launched"}
+
+    # ------------------------------------------------------------------
+    # run(): legacy blocking entry point for CLI and tests
+    # ------------------------------------------------------------------
+    async def run(self) -> None:
+        """One-shot blocking run of a single configured source.
+
+        Reads input_file or stream_url from settings, adds it as a source,
+        waits for it to finish (or the pipeline_timeout_s cap), then tears
+        everything down. Preserves the single-source semantics expected by
+        CLI + integration tests — dashboard uses add_source() instead.
+        """
+        initial = self._settings.input_file or self._settings.stream_url
+        if not initial:
+            logger.error("No input source configured. Set INPUT_FILE or STREAM_URL.")
+            return
+
+        logger.info("Pipeline starting (one-shot mode): %s", initial)
+        result = await self.add_source(initial)
+        if not result.get("started") and not result.get("ok"):
+            logger.error("Failed to add initial source: %s", result.get("reason"))
+            return
+
+        # Wait for that source's ingest task to finish (VOD complete / EOF /
+        # cancel) OR the configured timeout.
+        entry = self._sources.get(initial)
+        try:
+            if entry is not None:
+                _, task = entry
+                await asyncio.wait_for(task, timeout=self._settings.pipeline_timeout_s)
         except TimeoutError:
             logger.info("Pipeline timeout reached (%ds).", self._settings.pipeline_timeout_s)
         except asyncio.CancelledError:
             logger.info("Pipeline cancelled.")
         finally:
-            await self._cleanup()
+            await self._drain_and_stop()
 
-    async def _ingest_loop(self) -> None:
-        assert self._source is not None
+    async def _ingest_from_source(self, url: str, source: AudioSource) -> None:
+        """Per-source ingest loop: stream chunks into the shared queue.
+
+        Does NOT send a None sentinel on end — the queue is shared, so one
+        source ending must not shut down the workers. Sentinels are only
+        emitted by _drain_and_stop() on full pipeline shutdown.
+        """
         try:
-            async for chunk in self._source.chunks():
+            async for chunk in source.chunks():
                 if not self._running:
                     break
-                # Track temp dirs for cleanup
                 tmp_dir = str(Path(chunk.audio_path).parent)
                 if tmp_dir not in self._tmp_dirs:
                     self._tmp_dirs.append(tmp_dir)
                 await self._audio_q.put(chunk)
+        except asyncio.CancelledError:
+            # Normal path when remove_source() cancels us
+            raise
         except Exception:
-            logger.exception("Ingestion error")
+            logger.exception("Ingestion error for %s", url)
         finally:
-            await self._audio_q.put(None)
-            logger.info("Ingestion finished.")
+            # Deregister + close (idempotent if remove_source already did it)
+            self._sources.pop(url, None)
+            try:
+                await source.close()
+            except Exception:
+                logger.exception("Error closing source %s", url)
+            logger.info("Source ended: %s", url)
 
     async def _transcribe_loop(self) -> None:
         assert self._transcriber is not None
@@ -178,9 +299,12 @@ class Pipeline:
                     and len(transcript.full_text.split()) >= 3
                 ):
                     await self._transcript_q.put(transcript)
+                    # Publish with per-chunk stream_id so the UI can route
+                    # the event to the correct stream card.
                     await self._broadcaster.publish(PipelineEvent(
                         event_type="transcript",
                         chunk_id=chunk.chunk_id,
+                        stream_id=chunk.source_url,
                         transcript=transcript,
                     ))
             except Exception:
@@ -200,6 +324,7 @@ class Pipeline:
                     await self._broadcaster.publish(PipelineEvent(
                         event_type="extraction",
                         chunk_id=transcript.chunk_id,
+                        stream_id=transcript.source_url or None,
                         extraction=extraction,
                     ))
 
@@ -223,12 +348,21 @@ class Pipeline:
 
     async def _broadcast_loop(self) -> None:
         from src.backtest import signal_log
-        stream_id = self._settings.input_file or self._settings.stream_url or "pipeline"
+        # Fallback stream_id when the transcript carries no source_url (legacy
+        # single-source CLI path). For dashboard multi-source runs, every
+        # chunk/transcript carries its own source_url so this fallback is
+        # only hit if something upstream forgets to set it.
+        fallback_stream_id = (
+            self._settings.input_file or self._settings.stream_url or "pipeline"
+        )
         while self._running:
             item = await self._scoring_q.get()
             if item is None:
                 break
             transcript, result = item
+            # Per-chunk routing: use the transcript's own source_url so each
+            # stream card in the UI only receives its own signals + segments.
+            stream_id = transcript.source_url or fallback_stream_id
             try:
                 await self._broadcaster.publish(PipelineEvent(
                     event_type="signal",
@@ -261,7 +395,8 @@ class Pipeline:
                     for sig in result.signals:
                         await self._notifier.notify_if_high_confidence(sig)
 
-                # Segment aggregation: hierarchical super-events
+                # Segment aggregation: hierarchical super-events — scoped per
+                # stream_id so two parallel streams don't cross-pollute segments.
                 if self._aggregator is not None:
                     try:
                         from src.backtest import segment_reality
@@ -283,7 +418,9 @@ class Pipeline:
             except Exception:
                 logger.exception("Broadcast error for chunk %s", result.chunk_id)
 
-        # Pipeline ending — close any open segments cleanly
+        # Pipeline ending — close any open segments cleanly. We don't know
+        # which stream_id they belong to here, so we publish with the
+        # segment's own stream_id (set by the aggregator at open time).
         if self._aggregator is not None:
             try:
                 from src.backtest import segment_reality
@@ -292,7 +429,7 @@ class Pipeline:
                     await self._broadcaster.publish(PipelineEvent(
                         event_type=f"segment.{kind}",
                         chunk_id=segment.segment_id,
-                        stream_id=stream_id,
+                        stream_id=segment.stream_id or fallback_stream_id,
                         segment=segment,
                     ))
                     if kind == "close":
@@ -303,79 +440,109 @@ class Pipeline:
         logger.info("Broadcast finished.")
 
     async def _cleanup(self) -> None:
-        """Clean up resources on shutdown."""
-        self._running = False
-        if self._source:
-            await self._source.close()
+        """Clean up resources on shutdown (notifier + temp dirs).
+
+        Called from _drain_and_stop() after workers have drained. Does NOT
+        touch sources — those are cleaned up inside _drain_and_stop() first.
+        """
         if self._notifier:
-            await self._notifier.close()
+            try:
+                await self._notifier.close()
+            except Exception:
+                logger.exception("Error closing notifier")
         # Clean up temp directories
         for tmp_dir in self._tmp_dirs:
             try:
                 shutil.rmtree(tmp_dir, ignore_errors=True)
             except OSError:
                 pass
+        self._tmp_dirs = []
         logger.info("Pipeline stopped and cleaned up.")
 
-    def stop(self) -> None:
-        """Signal the pipeline to stop and cancel the run task.
+    async def _drain_and_stop(self) -> None:
+        """Stop all sources, drain the shared workers, then clean up.
 
-        Safe to call whether the pipeline is running or idle.
-        The run() coroutine will hit CancelledError, finally: _cleanup()
-        will be invoked, which resets _running and kills subprocesses.
+        Sequence:
+          1. Cancel every active source's ingest task + close its AudioSource
+          2. Send None sentinel so _transcribe_loop drains the audio queue
+             (which cascades None to transcript_q and scoring_q on its own).
+          3. Wait for all worker tasks to exit.
+          4. Run _cleanup() for notifier + temp dirs.
+        """
+        # 1. Cancel sources
+        for url, (source, task) in list(self._sources.items()):
+            task.cancel()
+            try:
+                await source.close()
+            except Exception:
+                logger.exception("Error closing source %s", url)
+        self._sources.clear()
+
+        # 2. Signal workers to drain (only if they ever started)
+        if self._running:
+            try:
+                await self._audio_q.put(None)
+            except Exception:
+                logger.exception("Error sending stop sentinel")
+
+            # 3. Wait for workers to exit
+            if self._worker_tasks:
+                try:
+                    await asyncio.wait_for(
+                        asyncio.gather(*self._worker_tasks, return_exceptions=True),
+                        timeout=30.0,
+                    )
+                except TimeoutError:
+                    logger.warning("Workers did not drain in 30s — cancelling.")
+                    for t in self._worker_tasks:
+                        if not t.done():
+                            t.cancel()
+            self._worker_tasks = []
+            self._running = False
+
+        # 4. Final cleanup
+        await self._cleanup()
+
+    def stop(self) -> None:
+        """Signal the pipeline to stop all sources and drain workers.
+
+        Safe to call whether the pipeline is running or idle. Schedules the
+        actual async teardown as a background task so the caller (often the
+        dashboard HTTP handler) doesn't block.
         """
         self._running = False
         if self._run_task is not None and not self._run_task.done():
             self._run_task.cancel()
+        else:
+            # Dashboard path: no run_task; schedule a drain so everything
+            # (source tasks + workers) shuts down cleanly.
+            try:
+                loop = asyncio.get_running_loop()
+            except RuntimeError:
+                return
+            loop.create_task(self._drain_and_stop(), name="pipeline-drain")
 
     async def wait_stopped(self, timeout: float = 10.0) -> bool:
-        """Await the run_task's completion after stop(). Returns True if
-        it finished cleanly, False on timeout."""
-        if self._run_task is None or self._run_task.done():
-            return True
-        try:
-            await asyncio.wait_for(self._run_task, timeout=timeout)
-            return True
-        except (TimeoutError, asyncio.CancelledError):
-            return False
+        """Wait for stop() to complete. Returns True on clean exit.
+
+        Covers both paths: run_task (legacy CLI) and drain (dashboard).
+        """
+        if self._run_task is not None and not self._run_task.done():
+            try:
+                await asyncio.wait_for(self._run_task, timeout=timeout)
+                return True
+            except (TimeoutError, asyncio.CancelledError):
+                return False
+        # Dashboard path: poll _running + _sources
+        deadline = asyncio.get_event_loop().time() + timeout
+        while asyncio.get_event_loop().time() < deadline:
+            if not self._running and not self._sources:
+                return True
+            await asyncio.sleep(0.1)
+        return False
 
     def is_running(self) -> bool:
-        return self._running
-
-    def start_with_source(self, source: str) -> dict[str, object]:
-        """Attach a new source URL/file path and start the pipeline if idle.
-
-        Called from the dashboard when the user clicks "Add Stream". Does not
-        support restart while running — caller must stop first.
-        Returns {"ok": bool, "started": bool, "reason": str}.
-        """
-        source = (source or "").strip()
-        if not source:
-            return {"ok": False, "started": False, "reason": "source is empty"}
-        # Check both _running (set inside run()) AND _run_task (set before run()
-        # is scheduled) to catch the race where two start calls arrive before
-        # the event loop schedules the first run()'s first await.
-        task_alive = self._run_task is not None and not self._run_task.done()
-        if self._running or task_alive:
-            return {"ok": False, "started": False,
-                    "reason": "pipeline already running"}
-
-        # Classify source: URL schemes → stream, otherwise → file path
-        if source.startswith(("http://", "https://", "rtmp://", "rtmps://", "hls://")):
-            self._settings.stream_url = source
-            self._settings.input_file = ""
-        else:
-            self._settings.input_file = source
-            self._settings.stream_url = ""
-
-        # Rebuild queues — fresh state for the new run
-        self._audio_q = asyncio.Queue(maxsize=self._settings.max_queue_size)
-        self._transcript_q = asyncio.Queue(maxsize=self._settings.max_queue_size)
-        self._scoring_q = asyncio.Queue(maxsize=self._settings.max_queue_size)
-
-        self._run_task = asyncio.create_task(self.run(), name="pipeline-run")
-        logger.info("Pipeline started with source: %s", source)
-        return {"ok": True, "started": True, "reason": "launched"}
+        return self._running or bool(self._sources)
 
     def _build_analysis_layer(self) -> bool:
         """Instantiate extractor + scorer + segment aggregator using the
