@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import time
 from typing import Any
 
@@ -45,7 +46,7 @@ class EntityExtractor:
                 max_tokens=1024,
             )
 
-            data = json.loads(response.text)
+            data = json.loads(_strip_code_fences(response.text))
             elapsed = time.perf_counter() - t0
 
             commodities = []
@@ -92,7 +93,11 @@ class EntityExtractor:
             return result
 
         except json.JSONDecodeError:
-            logger.error("Extraction %s: malformed JSON from LLM, returning empty result", transcript.chunk_id)
+            raw_preview = (response.text if 'response' in locals() else "")[:300]
+            logger.error(
+                "Extraction %s: malformed JSON. Raw response preview: %r",
+                transcript.chunk_id, raw_preview,
+            )
             return self._empty_result(transcript, time.perf_counter() - t0)
         except Exception:
             logger.exception("Extraction %s: unexpected error", transcript.chunk_id)
@@ -110,3 +115,17 @@ class EntityExtractor:
             output_tokens=0,
             processing_time_s=elapsed,
         )
+
+
+def _strip_code_fences(text: str) -> str:
+    """LLMs often wrap JSON in ```json ... ``` and sometimes add chatter after
+    the closing fence. Extract just the JSON object so json.loads() can parse."""
+    text = text.strip()
+    if text.startswith("```"):
+        text = re.sub(r"^```(?:json)?\s*", "", text)
+        # If there's another ``` later, chop off everything from it onward
+        # (handles `\`\`\`json\\n{...}\\n\`\`\`\\n**Note:** commentary`)
+        closing = text.find("```")
+        if closing > 0:
+            text = text[:closing]
+    return text.strip()

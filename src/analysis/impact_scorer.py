@@ -67,7 +67,8 @@ class ImpactScorer:
                 max_tokens=1024,
             )
 
-            data = json.loads(response.text)
+            from src.analysis.entity_extractor import _strip_code_fences
+            data = json.loads(_strip_code_fences(response.text))
             elapsed = time.perf_counter() - t0
 
             signals = []
