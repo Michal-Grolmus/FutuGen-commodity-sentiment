@@ -461,31 +461,38 @@ function deleteSavedStream(index) {
   renderSavedStreams();
 }
 
-function addFromSaved(index) {
+async function addFromSaved(index) {
   const s = savedStreams[index];
   const type = s.url.startsWith("http") ? "live" : "file";
   addStream(s.name, s.url, type);
   renderSavedStreams();
   renderStreamFilters();
   renderStreams();
+  await startPipelineWithSource(s.url);
 }
 
-function startAllSavedStreams() {
-  let added = 0;
+async function startAllSavedStreams() {
+  const toStart = [];
   for (const s of savedStreams) {
     const already = Object.values(streams).some(a => a.url === s.url);
     if (!already) {
       const type = s.url.startsWith("http") ? "live" : "file";
       addStream(s.name, s.url, type);
-      added++;
+      toStart.push(s.url);
     }
   }
   renderStreamFilters();
   renderStreams();
-  if (added === 0) {
+  if (toStart.length === 0) {
     alert("All saved streams are already active.");
-  } else {
-    alert(`Added ${added} stream${added !== 1 ? "s" : ""}. To actually transcribe, restart server with one of them as --stream-url or --input-file.`);
+    return;
+  }
+  // Pipeline supports one source at a time: launch the first, inform about the rest
+  await startPipelineWithSource(toStart[0]);
+  if (toStart.length > 1) {
+    alert(`Started pipeline on the first of ${toStart.length} streams (${toStart[0]}).\n` +
+          `The remaining ${toStart.length - 1} are listed in the UI but not yet processed — ` +
+          `multi-source support is a future upgrade.`);
   }
 }
 
@@ -500,7 +507,7 @@ function closeAddStreamModal() {
   document.getElementById("add-stream-modal").classList.add("hidden");
 }
 
-function submitAddStream() {
+async function submitAddStream() {
   const url = document.getElementById("add-stream-url").value.trim();
   const nameInput = document.getElementById("add-stream-name").value.trim();
   if (!url) return alert("URL is required.");
@@ -510,6 +517,30 @@ function submitAddStream() {
   renderStreamFilters();
   renderStreams();
   closeAddStreamModal();
+  await startPipelineWithSource(url);
+}
+
+async function startPipelineWithSource(source) {
+  try {
+    const res = await fetch("/api/pipeline/start", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ source }),
+    });
+    const data = await res.json();
+    if (data.started) {
+      setStatus("Processing", "status-ok");
+    } else if (data.reason === "pipeline already running") {
+      // Pipeline is busy with a previous source; inform the user
+      setStatus("Busy: another stream already running", "status-connecting");
+      alert("Pipeline is already processing another stream.\n" +
+            "Currently only one source at a time is supported. Restart to change it.");
+    } else if (data.error) {
+      alert("Could not start pipeline: " + data.error);
+    }
+  } catch (e) {
+    alert("Failed to contact server: " + e.message);
+  }
 }
 
 // ===== STREAM MANAGEMENT =====

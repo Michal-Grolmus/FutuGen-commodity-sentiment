@@ -265,6 +265,34 @@ def create_app(broadcaster: SignalBroadcaster | None = None) -> FastAPI:
             "input_source": os.environ.get("INPUT_FILE", "") or os.environ.get("STREAM_URL", ""),
         }
 
+    @app.post("/api/pipeline/start")
+    async def pipeline_start(payload: dict[str, object]) -> dict[str, object]:
+        """Attach a source URL or file path and start the pipeline.
+
+        Called from the dashboard's "Add Stream" / Saved Streams flow.
+        If the pipeline is already running, returns reason="pipeline already running".
+        """
+        source = str(payload.get("source", "")).strip()
+        if not source:
+            return {"ok": False, "error": "source is required"}
+        if _pipeline_ref is None:
+            return {"ok": False, "error": "Pipeline not initialized"}
+        if not hasattr(_pipeline_ref, "start_with_source"):
+            return {"ok": False, "error": "Pipeline doesn't support runtime start"}
+        return _pipeline_ref.start_with_source(source)
+
+    @app.get("/api/pipeline/status")
+    async def pipeline_status() -> dict[str, object]:
+        """Quick state check: is the pipeline currently processing?"""
+        if _pipeline_ref is None:
+            return {"running": False, "source": None, "reason": "no pipeline"}
+        settings = getattr(_pipeline_ref, "_settings", None)
+        running = bool(getattr(_pipeline_ref, "_running", False))
+        source = None
+        if settings is not None:
+            source = settings.input_file or settings.stream_url or None
+        return {"running": running, "source": source}
+
     @app.post("/api/settings/api-key")
     async def set_api_key(payload: dict[str, object]) -> dict[str, object]:
         """Live-update the LLM API key (optionally switching provider)."""

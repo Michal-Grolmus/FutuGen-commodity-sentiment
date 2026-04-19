@@ -57,6 +57,8 @@ class Pipeline:
         self._notifier: SlackNotifier | None = None
         self._price_client: PriceClient | None = None
         self._tmp_dirs: list[str] = []
+        # For runtime start / restart from the dashboard
+        self._run_task: asyncio.Task[None] | None = None
 
     async def run(self) -> None:
         self._running = True
@@ -271,6 +273,44 @@ class Pipeline:
 
     def stop(self) -> None:
         self._running = False
+
+    def is_running(self) -> bool:
+        return self._running
+
+    def start_with_source(self, source: str) -> dict[str, object]:
+        """Attach a new source URL/file path and start the pipeline if idle.
+
+        Called from the dashboard when the user clicks "Add Stream". Does not
+        support restart while running — caller must stop first.
+        Returns {"ok": bool, "started": bool, "reason": str}.
+        """
+        source = (source or "").strip()
+        if not source:
+            return {"ok": False, "started": False, "reason": "source is empty"}
+        # Check both _running (set inside run()) AND _run_task (set before run()
+        # is scheduled) to catch the race where two start calls arrive before
+        # the event loop schedules the first run()'s first await.
+        task_alive = self._run_task is not None and not self._run_task.done()
+        if self._running or task_alive:
+            return {"ok": False, "started": False,
+                    "reason": "pipeline already running"}
+
+        # Classify source: URL schemes → stream, otherwise → file path
+        if source.startswith(("http://", "https://", "rtmp://", "rtmps://", "hls://")):
+            self._settings.stream_url = source
+            self._settings.input_file = ""
+        else:
+            self._settings.input_file = source
+            self._settings.stream_url = ""
+
+        # Rebuild queues — fresh state for the new run
+        self._audio_q = asyncio.Queue(maxsize=self._settings.max_queue_size)
+        self._transcript_q = asyncio.Queue(maxsize=self._settings.max_queue_size)
+        self._scoring_q = asyncio.Queue(maxsize=self._settings.max_queue_size)
+
+        self._run_task = asyncio.create_task(self.run(), name="pipeline-run")
+        logger.info("Pipeline started with source: %s", source)
+        return {"ok": True, "started": True, "reason": "launched"}
 
     def _build_analysis_layer(self) -> bool:
         """Instantiate extractor + scorer using the configured provider.
