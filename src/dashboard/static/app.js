@@ -868,6 +868,33 @@ function renderChunkRow(chunk, streamId) {
   const sigSummary = hasEvent
     ? chunk.signals.map(s => `${s.commodity} ${s.direction} ${Math.round((s.confidence || 0) * 100)}%`).join(' · ')
     : '';
+
+  // People + indicators come from the `extraction` SSE event, attached in
+  // the extraction listener. They're meta-context for the chunk, not signals
+  // per se — shown inline but smaller, with full details in a hover tooltip.
+  const people = (chunk.people || []);
+  const indicators = (chunk.indicators || []);
+  let entitiesLine = '';
+  if (people.length || indicators.length) {
+    const peopleBrief = people.map(p => escapeHtml(p.name)).join(', ');
+    const indicatorsBrief = indicators
+      .map(i => escapeHtml(i.display_name || i.name)).join(', ');
+    const peopleTitle = people
+      .map(p => `${p.name}${p.role ? ' — ' + p.role : ''}: ${p.context || ''}`)
+      .join('\n');
+    const indicatorsTitle = indicators
+      .map(i => `${i.display_name || i.name}: ${i.context || ''}`)
+      .join('\n');
+    const tooltip = [
+      people.length ? `People:\n${peopleTitle}` : '',
+      indicators.length ? `Indicators:\n${indicatorsTitle}` : '',
+    ].filter(Boolean).join('\n\n');
+    entitiesLine = `<div class="chunk-entities" title="${escapeHtml(tooltip)}">` +
+      (people.length ? `<span class="chunk-ent-people">👤 ${peopleBrief}</span>` : '') +
+      (indicators.length ? `<span class="chunk-ent-indicators">📊 ${indicatorsBrief}</span>` : '') +
+      `</div>`;
+  }
+
   return `
     <div class="chunk-row ${hasEvent ? 'chunk-has-event' : ''}">
       <div class="${markerClass}"></div>
@@ -875,6 +902,7 @@ function renderChunkRow(chunk, streamId) {
         <div class="chunk-ts">${escapeHtml(ts)}</div>
         <div class="chunk-text">${escapeHtml(chunk.text || '')}</div>
         ${hasEvent ? `<div class="chunk-event-badge">${escapeHtml(sigSummary)}</div>` : ''}
+        ${entitiesLine}
       </div>
     </div>`;
 }
@@ -1359,6 +1387,27 @@ function connect(endpoint) {
       const container = document.getElementById(`chunks-container-${streamId}`);
       if (container) container.innerHTML = renderStreamChunks(streamId, s);
       else renderStreams();
+    }
+  });
+
+  // Extraction carries people + indicators (commodities go via the signal event).
+  // We attach them to the matching chunk so the UI can surface them.
+  source.addEventListener("extraction", (e) => {
+    const event = JSON.parse(e.data);
+    const ex = event.extraction;
+    if (!ex) return;
+    const streamId = resolveStreamId(event.stream_id) || Object.keys(streams)[0];
+    if (removedStreamIds.has(streamId)) return;
+    const s = streams[streamId];
+    if (!s) return;
+    const chunk = s.chunks.find(c => c.chunk_id === ex.chunk_id);
+    if (!chunk) return;
+    chunk.people = ex.people || [];
+    chunk.indicators = ex.indicators || [];
+    // Re-render just this stream's chunks panel
+    if (!document.getElementById("view-streams").classList.contains("hidden")) {
+      const container = document.getElementById(`chunks-container-${streamId}`);
+      if (container) container.innerHTML = renderStreamChunks(streamId, s);
     }
   });
 

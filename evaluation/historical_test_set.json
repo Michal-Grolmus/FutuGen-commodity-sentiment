@@ -1,0 +1,206 @@
+[
+  {
+    "video_id": "cnbc_tv18_oil_copper_127",
+    "title": "CNBC TV18: Oil + Copper record highs (1:27)",
+    "url": "https://www.youtube.com/watch?v=X_A08N9GO9g",
+    "audio_file": "audio_samples/historical/cnbc_tv18_oil_copper_127.webm",
+    "duration_s": 86.9,
+    "expected_commodities": [
+      "copper",
+      "crude_oil_brent",
+      "crude_oil_wti"
+    ],
+    "expected_directions": {
+      "copper": "bullish",
+      "crude_oil_brent": "bullish",
+      "crude_oil_wti": "bullish"
+    },
+    "notes": "Derived from title keywords; human-verified ground truth requires listening to the audio."
+  },
+  {
+    "video_id": "cnbc_tv18_gold_copper_126",
+    "title": "CNBC TV18: Gold $4k + Copper 3-mo high (1:26)",
+    "url": "https://www.youtube.com/watch?v=Ao6bO2CXm0E",
+    "audio_file": "audio_samples/historical/cnbc_tv18_gold_copper_126.webm",
+    "duration_s": 86.2,
+    "expected_commodities": [
+      "copper",
+      "gold"
+    ],
+    "expected_directions": {
+      "copper": "neutral",
+      "gold": "neutral"
+    },
+    "notes": "Derived from title keywords; human-verified ground truth requires listening to the audio."
+  },
+  {
+    "video_id": "cnbc_tv18_oil_copper_gold_131",
+    "title": "CNBC TV18: Oil firm, Copper + Gold slip (1:31)",
+    "url": "https://www.youtube.com/watch?v=tziI68GYIj4",
+    "audio_file": "audio_samples/historical/cnbc_tv18_oil_copper_gold_131.webm",
+    "duration_s": 90.7,
+    "expected_commodities": [
+      "copper",
+      "crude_oil_brent",
+      "crude_oil_wti",
+      "gold"
+    ],
+    "expected_directions": {
+      "copper": "bearish",
+      "crude_oil_brent": "bearish",
+      "crude_oil_wti": "bearish",
+      "gold": "bearish"
+    },
+    "notes": "Derived from title keywords; human-verified ground truth requires listening to the audio."
+  },
+  {
+    "video_id": "cnbc_tv18_copper_crude_gold_134",
+    "title": "CNBC TV18: Copper record, Crude -2%, Gold gains (1:34)",
+    "url": "https://www.youtube.com/watch?v=9F30Dsb74l0",
+    "audio_file": "audio_samples/historical/cnbc_tv18_copper_crude_gold_134.webm",
+    "duration_s": 93.9,
+    "expected_commodities": [
+      "copper",
+      "crude_oil_brent",
+      "crude_oil_wti",
+      "gold"
+    ],
+    "expected_directions": {
+      "copper": "bullish",
+      "crude_oil_brent": "bullish",
+      "crude_oil_wti": "bullish",
+      "gold": "bullish"
+    },
+    "notes": "Derived from title keywords; human-verified ground truth requires listening to the audio."
+  },
+  {
+    "video_id": "cnbc_tv18_crude_gold_136",
+    "title": "CNBC TV18: Crude steady, Gold 2-mo low (1:36)",
+    "url": "https://www.youtube.com/watch?v=McyesJLRhGw",
+    "audio_file": "audio_samples/historical/cnbc_tv18_crude_gold_136.webm",
+    "duration_s": 96.0,
+    "expected_commodities": [
+      "crude_oil_brent",
+      "crude_oil_wti",
+      "gold"
+    ],
+    "expected_directions": {
+      "crude_oil_brent": "bearish",
+      "crude_oil_wti": "bearish",
+      "gold": "bearish"
+    },
+    "notes": "Derived from title keywords; human-verified ground truth requires listening to the audio."
+  },
+  {
+    "video_id": "gold_oil_rally_503",
+    "title": "Commodities rally: Gold + Oil (5:03)",
+    "url": "https://www.youtube.com/watch?v=eOmzQJn92rA",
+    "audio_file": "audio_samples/historical/gold_oil_rally_503.webm",
+    "duration_s": 302.6,
+    "expected_commodities": [
+      "crude_oil_brent",
+      "crude_oil_wti",
+      "gold"
+    ],
+    "expected_directions": {
+      "crude_oil_brent": "bullish",
+      "crude_oil_wti": "bullish",
+      "gold": "bullish"
+    },
+    "notes": "Derived from title keywords; human-verified ground truth requires listening to the audio."
+  },
+  {
+    "video_id": "gold_silver_copper_618",
+    "title": "Gold + Silver + Copper 2026 outlook (6:18)",
+    "url": "https://www.youtube.com/watch?v=Xmc83f-JOfU",
+    "audio_file": "audio_samples/historical/gold_silver_copper_618.webm",
+    "duration_s": 378.1,
+    "expected_commodities": [
+      "copper",
+      "gold",
+      "silver"
+    ],
+    "expected_directions": {
+      "copper": "neutral",
+      "gold": "neutral",
+      "silver": "neutral"
+    },
+    "notes": "Derived from title keywords; human-verified ground truth requires listening to the audio."
+  },
+  {
+    "video_id": "oil_gold_silver_copper_815",
+    "title": "Oil + Gold + Silver + Copper trade setups (8:15)",
+    "url": "https://www.youtube.com/watch?v=pU9Y3U0az9E",
+    "audio_file": "audio_samples/historical/oil_gold_silver_copper_815.webm",
+    "duration_s": 494.6,
+    "expected_commodities": [
+      "copper",
+      "crude_oil_brent",
+      "crude_oil_wti",
+      "gold",
+      "silver"
+    ],
+    "expected_directions": {
+      "copper": "neutral",
+      "crude_oil_brent": "neutral",
+      "crude_oil_wti": "neutral",
+      "gold": "neutral",
+      "silver": "neutral"
+    },
+    "notes": "Derived from title keywords; human-verified ground truth requires listening to the audio."
+  },
+  {
+    "video_id": "cnbc_tv18_big_c_oils_metals_1056",
+    "title": "CNBC TV18 Big C: Oils + Metals outlook (10:56)",
+    "url": "https://www.youtube.com/watch?v=rS4KlK3BUh0",
+    "audio_file": "audio_samples/historical/cnbc_tv18_big_c_oils_metals_1056.webm",
+    "duration_s": 656.0,
+    "expected_commodities": [
+      "crude_oil_brent",
+      "crude_oil_wti"
+    ],
+    "expected_directions": {
+      "crude_oil_brent": "neutral",
+      "crude_oil_wti": "neutral"
+    },
+    "notes": "Derived from title keywords; human-verified ground truth requires listening to the audio."
+  },
+  {
+    "video_id": "cnbc_tv18_gold_silver_champions_1116",
+    "title": "CNBC TV18: Gold + Silver Commodity Champions (11:16)",
+    "url": "https://www.youtube.com/watch?v=FIGIJ__rIUI",
+    "audio_file": "audio_samples/historical/cnbc_tv18_gold_silver_champions_1116.webm",
+    "duration_s": 675.9,
+    "expected_commodities": [
+      "gold",
+      "silver"
+    ],
+    "expected_directions": {
+      "gold": "neutral",
+      "silver": "neutral"
+    },
+    "notes": "Derived from title keywords; human-verified ground truth requires listening to the audio."
+  },
+  {
+    "video_id": "cnbc_tv18_gold_silver_copper_crude_1345",
+    "title": "CNBC TV18: Gold + Silver + Copper + Crude (13:45)",
+    "url": "https://www.youtube.com/watch?v=o0OMr9yerf4",
+    "audio_file": "audio_samples/historical/cnbc_tv18_gold_silver_copper_crude_1345.webm",
+    "duration_s": 825.3,
+    "expected_commodities": [
+      "copper",
+      "crude_oil_brent",
+      "crude_oil_wti",
+      "gold",
+      "silver"
+    ],
+    "expected_directions": {
+      "copper": "neutral",
+      "crude_oil_brent": "neutral",
+      "crude_oil_wti": "neutral",
+      "gold": "neutral",
+      "silver": "neutral"
+    },
+    "notes": "Derived from title keywords; human-verified ground truth requires listening to the audio."
+  }
+]
