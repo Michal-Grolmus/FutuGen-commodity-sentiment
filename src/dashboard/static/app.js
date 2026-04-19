@@ -575,7 +575,12 @@ function renderSavedStreams() {
     header.textContent = cat.label;
     list.appendChild(header);
     for (const { s, i } of entries) {
-      const isActive = Object.values(streams).some(a => a.url === s.url);
+      // "active" = pipeline is currently transcribing this URL (not just
+      // a leftover stream card from a previous session). A merely paused
+      // or finished stream still appears in `streams` — we don't count it.
+      const isActive = Object.values(streams).some(
+        a => a.url === s.url && !a.stopped,
+      );
       const item = document.createElement("div");
       item.className = "saved-stream-item";
       item.innerHTML = `
@@ -584,7 +589,7 @@ function renderSavedStreams() {
           <div class="saved-name">${escapeHtml(s.name)}</div>
           <div class="saved-url">${escapeHtml(s.url)}</div>
         </div>
-        <button class="btn-sm" onclick="addFromSaved(${i})" ${isActive ? "disabled" : ""}>Start</button>
+        <button class="btn-sm" onclick="addFromSaved(${i})" title="${isActive ? 'Already running' : 'Start processing this URL'}">${isActive ? 'Running' : 'Start'}</button>
         <button class="btn-remove" onclick="deleteSavedStream(${i})">Remove</button>`;
       list.appendChild(item);
     }
@@ -610,12 +615,18 @@ function deleteSavedStream(index) {
 }
 
 async function addFromSaved(index) {
+  console.log("[addFromSaved] click", { index, entry: savedStreams[index] });
   const s = savedStreams[index];
+  if (!s) {
+    alert("Could not find saved stream at index " + index + ". Try reopening the modal.");
+    return;
+  }
   const type = s.url.startsWith("http") ? "live" : "file";
   addStream(s.name, s.url, type);
   renderSavedStreams();
   renderStreamFilters();
   renderStreams();
+  closeSavedStreamsModal();  // close modal so user can see the stream card + status change
   await startPipelineWithSource(s.url);
 }
 
@@ -668,7 +679,7 @@ async function submitAddStream() {
   await startPipelineWithSource(url);
 }
 
-async function startPipelineWithSource(source) {
+async function startPipelineWithSource(source, { retryAfterStop = true } = {}) {
   // Safety net: without an open SSE, events produced by the pipeline never
   // reach the UI and the user sees "Waiting for transcript..." forever.
   if (!activeSSE) connect("/api/events");
@@ -683,7 +694,20 @@ async function startPipelineWithSource(source) {
     console.log("[pipeline/start]", data);
     if (data.started) {
       setStatus("Processing", "status-ok");
-    } else if (data.reason === "pipeline already running") {
+      return;
+    }
+    if (data.reason === "pipeline already running" && retryAfterStop) {
+      // Ask the user whether to swap: pipeline supports one source at a time.
+      const ok = confirm(
+        "Pipeline is already processing another stream.\n" +
+        "Stop it and start this one instead?",
+      );
+      if (!ok) { setStatus("Ready", "status-ok"); return; }
+      await fetch("/api/pipeline/stop", { method: "POST" });
+      // Re-attempt once, without retry loop
+      return await startPipelineWithSource(source, { retryAfterStop: false });
+    }
+    if (data.reason === "pipeline already running") {
       // Pipeline is busy with a previous source; inform the user
       setStatus("Busy: another stream already running", "status-connecting");
       alert("Pipeline is already processing another stream.\n" +
