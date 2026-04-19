@@ -1287,6 +1287,19 @@ function renderSignalItem(sig) {
 }
 
 // ===== SSE =====
+// Backend broadcasts events with `stream_id = URL` (the raw source).
+// Frontend keys `streams` by the user-friendly name (e.g. "CNBC TV18: ...").
+// resolveStreamId finds the existing key by URL match before falling back
+// to creating a new entry — fixes "stream shown twice, once by name once by URL".
+function resolveStreamId(sseStreamId) {
+  if (!sseStreamId) return sseStreamId;
+  if (streams[sseStreamId]) return sseStreamId;  // exact key match (demo mode)
+  for (const [key, s] of Object.entries(streams)) {
+    if (s.url === sseStreamId) return key;
+  }
+  return sseStreamId;
+}
+
 function connect(endpoint) {
   if (activeSSE) activeSSE.close();
   console.log("[SSE] connecting to", endpoint);
@@ -1310,7 +1323,7 @@ function connect(endpoint) {
     const event = JSON.parse(e.data);
     const t = event.transcript;
     if (!t) return;
-    const streamId = event.stream_id || Object.keys(streams)[0];
+    const streamId = resolveStreamId(event.stream_id) || Object.keys(streams)[0];
     if (removedStreamIds.has(streamId)) return;
     if (!streams[streamId]) addStream(streamId, streamId, "demo");
     if (streams[streamId].stopped) return;
@@ -1341,7 +1354,7 @@ function connect(endpoint) {
     const event = JSON.parse(e.data);
     const scoring = event.scoring;
     if (!scoring) return;
-    const streamId = event.stream_id || Object.keys(streams)[0];
+    const streamId = resolveStreamId(event.stream_id) || Object.keys(streams)[0];
     if (removedStreamIds.has(streamId)) return;
     if (!streams[streamId]) addStream(streamId, streamId, "demo");
     if (streams[streamId].stopped) return;
@@ -1384,7 +1397,7 @@ function connect(endpoint) {
     const event = JSON.parse(e.data);
     const seg = event.segment;
     if (!seg) return;
-    const streamId = event.stream_id || seg.stream_id;
+    const streamId = resolveStreamId(event.stream_id || seg.stream_id);
     if (removedStreamIds.has(streamId)) return;
     if (!streams[streamId]) addStream(streamId, streamId, "demo");
     const s = streams[streamId];

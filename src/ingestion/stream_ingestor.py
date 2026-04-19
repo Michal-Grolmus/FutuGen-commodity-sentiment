@@ -77,6 +77,7 @@ class StreamIngestor(AudioSource):
         retries = 0
 
         while self._running and retries < MAX_RETRIES:
+            clean_eof = False
             try:
                 process = await self._start_ffmpeg()
                 assert process.stdout is not None
@@ -89,7 +90,8 @@ class StreamIngestor(AudioSource):
                         timeout=30.0,
                     )
                     if not data:
-                        logger.warning("Stream ended, will retry...")
+                        logger.warning("Stream ended (clean EOF).")
+                        clean_eof = True
                         break
 
                     buffer += data
@@ -104,6 +106,12 @@ class StreamIngestor(AudioSource):
                 logger.exception("Stream error (ffmpeg)")
             finally:
                 await self._kill_processes()
+
+            # If we got data and then saw a clean EOF, the source is a VOD
+            # that finished — don't retry or we'd replay it indefinitely.
+            if clean_eof and chunk_index > 0:
+                logger.info("VOD complete (%d chunks). Not retrying.", chunk_index)
+                break
 
             if self._running:
                 retries += 1
@@ -164,6 +172,7 @@ class StreamIngestor(AudioSource):
             stop_event = threading.Event()
             data_queue: queue.Queue[bytes | None] = queue.Queue(maxsize=PYAV_QUEUE_MAX)
             thread: threading.Thread | None = None
+            clean_eof = False
 
             try:
                 direct_url = await self._resolve_direct_url()
@@ -189,7 +198,8 @@ class StreamIngestor(AudioSource):
                         break
 
                     if data is None:
-                        logger.warning("Stream ended, will retry...")
+                        logger.warning("Stream ended (clean EOF).")
+                        clean_eof = True
                         break
 
                     buffer += data
@@ -204,6 +214,11 @@ class StreamIngestor(AudioSource):
                 stop_event.set()
                 if thread is not None and thread.is_alive():
                     thread.join(timeout=2.0)
+
+            # VOD complete — don't retry or we'd replay the same content.
+            if clean_eof and chunk_index > 0:
+                logger.info("VOD complete (%d chunks). Not retrying.", chunk_index)
+                break
 
             if self._running:
                 retries += 1
