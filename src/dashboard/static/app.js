@@ -889,10 +889,22 @@ function topDirection(signals) {
 
 function renderStreamActiveSegments(id, s) {
   const active = Object.values(s.active_segments || {});
-  if (active.length === 0) {
-    return '<div class="segment-active-empty">No active segment yet — need at least one signal.</div>';
+  const recentClosed = (s.closed_segments || []).slice(-5).reverse();
+
+  if (active.length === 0 && recentClosed.length === 0) {
+    return '<div class="segment-active-empty">No segments yet — run at least 1 chunk with commodity signals.</div>';
   }
-  return active.map(seg => renderActiveSegmentCard(seg)).join('');
+
+  let html = '';
+  if (active.length > 0) {
+    html += '<div class="segment-section-label">Active</div>';
+    html += active.map(seg => renderActiveSegmentCard(seg)).join('');
+  }
+  if (recentClosed.length > 0) {
+    html += `<div class="segment-section-label">Recently closed (${recentClosed.length})</div>`;
+    html += recentClosed.map(seg => renderActiveSegmentCard(seg)).join('');
+  }
+  return html;
 }
 
 function renderActiveSegmentCard(seg) {
