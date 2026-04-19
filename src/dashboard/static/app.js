@@ -72,18 +72,51 @@ async function loadCommodities() {
 }
 
 // ===== INIT =====
+async function rehydrateApiKeyFromStorage() {
+  // If user saved a key in a previous session, push it back into the running
+  // pipeline so server-restart doesn't force the onboarding flow again.
+  const anthKey = localStorage.getItem("csm_api_key") || "";
+  const openKey = localStorage.getItem("csm_openai_api_key") || "";
+  const storedProvider = localStorage.getItem("csm_llm_provider");
+  const provider = storedProvider === "openai" ? "openai" : "anthropic";
+  const key = provider === "openai" ? openKey : anthKey;
+  if (!key) return false;
+  try {
+    const res = await fetch("/api/settings/api-key", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ api_key: key, provider }),
+    });
+    const data = await res.json();
+    return !!(data && data.ok && data.active);
+  } catch {
+    return false;
+  }
+}
+
 async function init() {
   await loadCommodities();
+
+  // Rehydrate first: if localStorage has a key, push to server before we read /api/config
+  const rehydrated = await rehydrateApiKeyFromStorage();
   const config = await fetchJSON("/api/config");
-  if (!config.has_api_key && !config.input_source) {
+
+  const hasKey = rehydrated || config.has_api_key;
+  if (!hasKey && !config.input_source) {
+    // Genuinely first-time user (no key anywhere, no source): show onboarding + demo offer
     showOnboarding();
-  } else {
-    const source = config.input_source || "Pipeline";
-    addStream(source, source, config.mock_mode ? "mock" : "live");
-    showApp("streams");
-    connect("/api/events");
-    if (config.mock_mode) setStatus("Mock Mode", "status-demo");
+    return;
   }
+
+  // Skip onboarding — go straight to the app
+  const source = config.input_source || "Pipeline";
+  if (config.input_source) {
+    addStream(source, source, config.mock_mode ? "mock" : "live");
+  }
+  showApp("streams");
+  connect("/api/events");
+  if (config.mock_mode) setStatus("Mock Mode", "status-demo");
+  else if (hasKey) setStatus("Ready", "status-ok");
 }
 
 async function fetchJSON(url) {
@@ -332,6 +365,15 @@ async function removeSettingsApiKey() {
     });
   } catch {}
   renderSettingsView();
+
+  // If NO provider has a key anymore, return to onboarding so the user sees
+  // the demo offer again. If the other provider still has a key, stay in app.
+  const otherKey = provider === "openai"
+    ? localStorage.getItem("csm_api_key")
+    : localStorage.getItem("csm_openai_api_key");
+  if (!otherKey) {
+    showOnboarding();
+  }
 }
 
 // ===== SOURCE MODAL =====
