@@ -410,13 +410,20 @@ a.stream-url:hover { text-decoration: underline; }
           mask-image: none;
 }
 
-/* A single chunk row with marker on the left */
+/* A single chunk row with marker on the left.
+
+   The slide-in animation fires on every newly-attached chunk-row — when
+   appendChunkToStream() inserts one at the bottom of .chunks-visible it
+   rises from below into its final slot, and the two chunks above it
+   transition their opacity via the nth-last-child rules (now 3rd/2nd
+   instead of 2nd/1st). Net effect: older chunks visibly dim + shift up
+   as the new one arrives. */
 .chunk-row {
   display: flex; gap: 0.6rem;
   padding: 0.4rem 0.5rem;
   border-radius: 4px;
   background: #0d1117;
-  animation: chunk-fade-in 0.4s ease-out;
+  animation: chunk-slide-in-from-bottom 0.45s ease-out;
   transition: opacity 0.25s ease;
 }
 .chunk-row.chunk-has-event { background: #141a22; border-left: 3px solid transparent; }
@@ -441,8 +448,8 @@ a.stream-url:hover { text-decoration: underline; }
 .chunk-ent-people { color: #d2a8ff; }
 .chunk-ent-indicators { color: #79b8ff; }
 
-@keyframes chunk-fade-in {
-  from { opacity: 0; transform: translateY(-3px); }
+@keyframes chunk-slide-in-from-bottom {
+  from { opacity: 0; transform: translateY(18px); }
   to { opacity: 1; transform: translateY(0); }
 }
 

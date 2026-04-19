@@ -961,7 +961,7 @@ function renderChunkRow(chunk, streamId) {
   }
 
   return `
-    <div class="chunk-row ${hasEvent ? 'chunk-has-event' : ''}">
+    <div class="chunk-row ${hasEvent ? 'chunk-has-event' : ''}" data-chunk-id="${escapeHtml(chunk.chunk_id || '')}">
       <div class="${markerClass}"></div>
       <div class="chunk-body">
         <div class="chunk-ts">${escapeHtml(ts)}</div>
@@ -1032,6 +1032,114 @@ function toggleChunksExpand(id) {
   streams[id]._chunks_expanded = !streams[id]._chunks_expanded;
   const container = document.getElementById(`chunks-container-${id}`);
   if (container) container.innerHTML = renderStreamChunks(id, streams[id]);
+}
+
+// Incremental chunk append: attach a NEW chunk to the DOM without rebuilding
+// the whole panel. The rolling visible window of CHUNKS_VISIBLE_DEFAULT is
+// maintained by migrating the oldest visible chunk into the collapsible
+// "older" history. Older chunks appear to shift upward and dim (CSS
+// nth-last-child rules re-evaluate on each insert), while the new one
+// slides in from below — matches how a live transcript reads chronologically.
+function appendChunkToStream(streamId, s, chunk) {
+  const container = document.getElementById(`chunks-container-${streamId}`);
+  if (!container) return;
+
+  // First ever chunk: we're still showing the "Waiting for transcript…"
+  // placeholder (chunks-empty). Swap to the full rendered layout on the
+  // first arrival — after that, future chunks come in incrementally.
+  const empty = container.querySelector(".chunks-empty");
+  if (empty) {
+    container.innerHTML = renderStreamChunks(streamId, s);
+    return;
+  }
+
+  const visible = container.querySelector(".chunks-visible");
+  if (!visible) {
+    // Defensive: markup out of sync — fall back to full render
+    container.innerHTML = renderStreamChunks(streamId, s);
+    return;
+  }
+
+  // Build the chunk row as a DOM node (so we append the actual element,
+  // not an HTML string — keeps the browser from re-parsing existing rows).
+  const tpl = document.createElement("template");
+  tpl.innerHTML = renderChunkRow(chunk, streamId).trim();
+  const newNode = tpl.content.firstElementChild;
+  if (!newNode) return;
+
+  visible.appendChild(newNode);
+
+  // If visible now overflows the cap, migrate the top (oldest) rows into
+  // the hidden history so only the last N stay visible.
+  const rows = visible.querySelectorAll(".chunk-row");
+  const excess = rows.length - CHUNKS_VISIBLE_DEFAULT;
+  if (excess > 0) {
+    for (let i = 0; i < excess; i++) {
+      _migrateOldestVisibleToOlder(container, streamId, s);
+    }
+  }
+}
+
+function _migrateOldestVisibleToOlder(container, streamId, s) {
+  const visible = container.querySelector(".chunks-visible");
+  if (!visible) return;
+  const oldest = visible.querySelector(".chunk-row");
+  if (!oldest) return;
+
+  let older = container.querySelector(`#chunks-older-${CSS.escape(streamId)}`);
+  let toggle = container.querySelector(".chunks-toggle");
+
+  if (!older) {
+    // First migration for this stream: build the older + toggle containers
+    // on demand so they slot in before the visible panel.
+    older = document.createElement("div");
+    older.className = `chunks-older${s._chunks_expanded ? "" : " hidden"}`;
+    older.id = `chunks-older-${streamId}`;
+    toggle = document.createElement("div");
+    toggle.className = "chunks-toggle";
+    toggle.setAttribute("onclick", `toggleChunksExpand('${streamId.replace(/'/g, "\\'")}')`);
+    container.insertBefore(older, visible);
+    container.insertBefore(toggle, visible);
+  }
+
+  // Append to end of older so chronological order is preserved
+  // (older = oldest-first, like visible).
+  older.appendChild(oldest);
+
+  // Refresh toggle label
+  const olderCount = older.querySelectorAll(".chunk-row").length;
+  if (toggle) {
+    toggle.innerHTML = s._chunks_expanded
+      ? `&uarr; Hide ${olderCount} older chunk${olderCount !== 1 ? "s" : ""}`
+      : `Show ${olderCount} older chunk${olderCount !== 1 ? "s" : ""} &darr;`;
+  }
+}
+
+// Update an existing chunk row's contents (signal marker, event badge,
+// extraction entities) WITHOUT replacing the row node itself. Replacing
+// the node would retrigger the chunk-slide-in-from-bottom animation; by
+// updating innerHTML + className in place the row stays where it is and
+// only the inner pieces change.
+function refreshChunkRow(streamId, s, chunkId) {
+  const container = document.getElementById(`chunks-container-${streamId}`);
+  if (!container) return;
+  const selector = `.chunk-row[data-chunk-id="${CSS.escape(chunkId)}"]`;
+  const row = container.querySelector(selector);
+  if (!row) return;
+  const chunk = s.chunks.find(c => c.chunk_id === chunkId);
+  if (!chunk) return;
+
+  // Render the fresh HTML into a detached template so we can lift just the
+  // outer element's class list + inner markup.
+  const tpl = document.createElement("template");
+  tpl.innerHTML = renderChunkRow(chunk, streamId).trim();
+  const fresh = tpl.content.firstElementChild;
+  if (!fresh) return;
+
+  // className may toggle (chunk-has-event appears when the first signal
+  // lands). Keep the row's identity + animation state intact.
+  row.className = fresh.className;
+  row.innerHTML = fresh.innerHTML;
 }
 
 // Demo-backed stream names (match demo endpoint stream_map values)
@@ -1545,20 +1653,27 @@ function connect(endpoint) {
     const s = streams[streamId];
     // If this chunk_id already exists (re-processing), skip
     if (s.chunks.some(c => c.chunk_id === t.chunk_id)) return;
-    s.chunks.push({
+    const newChunk = {
       chunk_id: t.chunk_id,
       ts: new Date().toLocaleTimeString(),
       text: t.full_text || "",
       signals: [],  // filled when the signal event arrives
-    });
+    };
+    s.chunks.push(newChunk);
     // Keep last ~5 min (~30 chunks @ 10s)
     if (s.chunks.length > 30) s.chunks = s.chunks.slice(-30);
 
     renderStreamFilters();
     if (!document.getElementById("view-streams").classList.contains("hidden")) {
       const container = document.getElementById(`chunks-container-${streamId}`);
-      if (container) container.innerHTML = renderStreamChunks(streamId, s);
-      else renderStreams();
+      if (container) {
+        // Incremental append: slide the new chunk in from below. Existing
+        // chunks shift up (and the CSS nth-last-child rules dim them
+        // smoothly via the opacity transition on .chunk-row).
+        appendChunkToStream(streamId, s, newChunk);
+      } else {
+        renderStreams();
+      }
     }
   });
 
@@ -1576,10 +1691,10 @@ function connect(endpoint) {
     if (!chunk) return;
     chunk.people = ex.people || [];
     chunk.indicators = ex.indicators || [];
-    // Re-render just this stream's chunks panel
+    // Surgical: only swap this one chunk's row (keeps neighbouring rows
+    // untouched so their animations / opacity transitions don't reset).
     if (!document.getElementById("view-streams").classList.contains("hidden")) {
-      const container = document.getElementById(`chunks-container-${streamId}`);
-      if (container) container.innerHTML = renderStreamChunks(streamId, s);
+      refreshChunkRow(streamId, s, ex.chunk_id);
     }
   });
 
@@ -1616,8 +1731,14 @@ function connect(endpoint) {
 
     if (!document.getElementById("view-streams").classList.contains("hidden")) {
       const container = document.getElementById(`chunks-container-${streamId}`);
-      if (container) container.innerHTML = renderStreamChunks(streamId, s);
-      else renderStreams();
+      if (container) {
+        // Signal arrives AFTER the transcript's chunk row was already
+        // inserted; just swap that one row in place so the marker colour
+        // + signal badge appear without disturbing neighbouring chunks.
+        refreshChunkRow(streamId, s, scoring.chunk_id);
+      } else {
+        renderStreams();
+      }
     }
     if (!document.getElementById("view-commodities").classList.contains("hidden")) {
       renderLatestEvents();
