@@ -71,6 +71,18 @@ class Pipeline:
         # Legacy: the task created by run() for the blocking one-shot path.
         self._run_task: asyncio.Task[None] | None = None
 
+        # Per-source chunk accounting — used to close segments exactly when
+        # the last chunk from an ended source has finished being broadcast,
+        # instead of after a fixed delay that could race with slow LLM calls.
+        #   ingested[url]     — chunks yielded by ingest (monotonic)
+        #   ended[url]        — final ingested count when source EOF'd (None = still active)
+        #   broadcasted[url]  — chunks broadcast by _broadcast_loop
+        # When ended[url] is set AND broadcasted[url] >= ended[url], the
+        # broadcast loop schedules close_stream() for that URL.
+        self._ingested_per_source: dict[str, int] = {}
+        self._source_ended_count: dict[str, int] = {}
+        self._broadcasted_per_source: dict[str, int] = {}
+
     # ------------------------------------------------------------------
     # Shared-worker startup (idempotent; called by run() and add_source())
     # ------------------------------------------------------------------
@@ -253,10 +265,16 @@ class Pipeline:
     async def _ingest_from_source(self, url: str, source: AudioSource) -> None:
         """Per-source ingest loop: stream chunks into the shared queue.
 
+        Counts ingested chunks per URL so the broadcast loop can tell when
+        an ended source has fully drained through the pipeline (transcribe
+        → analyze → broadcast) and fire a segment-close event at exactly
+        the right moment — no fixed delay, no race with slow LLM calls.
+
         Does NOT send a None sentinel on end — the queue is shared, so one
         source ending must not shut down the workers. Sentinels are only
         emitted by _drain_and_stop() on full pipeline shutdown.
         """
+        self._ingested_per_source.setdefault(url, 0)
         try:
             async for chunk in source.chunks():
                 if not self._running:
@@ -265,6 +283,9 @@ class Pipeline:
                 if tmp_dir not in self._tmp_dirs:
                     self._tmp_dirs.append(tmp_dir)
                 await self._audio_q.put(chunk)
+                self._ingested_per_source[url] = (
+                    self._ingested_per_source.get(url, 0) + 1
+                )
         except asyncio.CancelledError:
             # Normal path when remove_source() cancels us
             raise
@@ -277,43 +298,47 @@ class Pipeline:
                 await source.close()
             except Exception:
                 logger.exception("Error closing source %s", url)
-            logger.info("Source ended: %s", url)
-            # Schedule a delayed segment close for this stream. Without this,
-            # any segments opened for this source stay "Active / Analyzing…"
-            # forever because the aggregator never sees another chunk to
-            # trigger a check or topic shift. The delay (~12s) gives any
-            # in-flight chunks time to flow through transcribe → analyze →
-            # broadcast before we close; after close they'd start a new
-            # (and also never-closing) segment.
-            if self._running:
-                asyncio.create_task(
-                    self._close_stream_segments_delayed(url),
-                    name=f"close-segs:{url[:40]}",
-                )
 
-    async def _close_stream_segments_delayed(
-        self, url: str, delay: float = 12.0,
-    ) -> None:
-        """Close active segments for a stream after its source ended.
+            final_count = self._ingested_per_source.get(url, 0)
+            broadcasted = self._broadcasted_per_source.get(url, 0)
+            logger.info(
+                "Source ended: %s (ingested=%d, broadcasted=%d)",
+                url, final_count, broadcasted,
+            )
 
-        Runs as a background task: waits for in-flight chunks to drain, then
-        calls aggregator.close_stream() and broadcasts the close events. A
-        final LLM verdict inside _close_segment fills in summary + direction
-        for segments that never reached the 6-chunk check interval.
+            # Record the final count so the broadcast loop knows when this
+            # source has fully drained. If all chunks already went through
+            # (rare race: broadcast faster than ingest tail), fire the close
+            # inline now instead of waiting for a chunk that will never come.
+            self._source_ended_count[url] = final_count
+            if self._running and broadcasted >= final_count:
+                await self._close_stream_segments(url)
+
+    async def _close_stream_segments(self, url: str) -> None:
+        """Close all open segments for the given stream and broadcast the
+        close events. Called when a source has both EOF'd AND all its
+        chunks have been broadcast (see drain tracker in _broadcast_loop).
+
+        Idempotent: the _source_ended_count guard prevents double-firing,
+        and close_stream() itself only yields events for segments still in
+        the aggregator's active dict.
         """
-        await asyncio.sleep(delay)
-        if self._aggregator is None:
-            return
-        # Guard: if the user added the same URL again in the meantime, the
-        # source is active once more — leave its segments alone.
+        # One-shot: clear the accounting so we don't close twice if the
+        # broadcast loop re-enters this path for the final chunk.
+        self._source_ended_count.pop(url, None)
         if url in self._sources:
+            # Defensive: user re-added this URL while we were waiting —
+            # leave the new incarnation's segments alone.
+            return
+        if self._aggregator is None:
             return
         try:
             events = await self._aggregator.close_stream(url, reason="stream_ended")
         except Exception:
-            logger.exception("Delayed segment close failed for %s", url)
+            logger.exception("Segment close failed for %s", url)
             return
         if not events:
+            logger.info("No open segments to close for ended source: %s", url)
             return
         from src.backtest import segment_reality
         for kind, segment in events:
@@ -466,6 +491,29 @@ class Pipeline:
                     except Exception:
                         logger.exception("Segment aggregation error for chunk %s",
                                          result.chunk_id)
+
+                # Per-source drain tracker: count this broadcast, and if the
+                # source already ended AND we've now broadcast every chunk it
+                # ingested, fire segment close so the UI stops showing
+                # "Analyzing…". Using a counter (not a timer) guarantees we
+                # close exactly when the last chunk lands — never earlier
+                # (race with in-flight), never later (no stuck cards).
+                #
+                # Inline `await` (not create_task) so the close + its
+                # close-time LLM verdict complete BEFORE the broadcast loop
+                # continues; otherwise a subsequent pipeline shutdown
+                # (drain_and_stop) could race us and fire close_all first,
+                # producing segments with reason="pipeline_stopped" and an
+                # empty summary.
+                self._broadcasted_per_source[stream_id] = (
+                    self._broadcasted_per_source.get(stream_id, 0) + 1
+                )
+                ended_count = self._source_ended_count.get(stream_id)
+                if (
+                    ended_count is not None
+                    and self._broadcasted_per_source[stream_id] >= ended_count
+                ):
+                    await self._close_stream_segments(stream_id)
             except Exception:
                 logger.exception("Broadcast error for chunk %s", result.chunk_id)
 
