@@ -37,42 +37,42 @@ If the text has no commodity-relevant content, return empty lists.
 Input: "The Federal Reserve raised interest rates by 25 basis points today. \
 Chair Powell stated inflation remains above target."
 Output:
-{{{{
+{{
   "commodities": [
-    {{{{"name": "gold", "display_name": "Gold", "context": "raised interest rates by 25 basis points"}}}}
+    {{"name": "gold", "display_name": "Gold", "context": "raised interest rates by 25 basis points"}}
   ],
   "people": [
-    {{{{"name": "Jerome Powell", "role": "Federal Reserve Chair", "context": "Chair Powell stated inflation remains above target"}}}}
+    {{"name": "Jerome Powell", "role": "Federal Reserve Chair", "context": "Chair Powell stated inflation remains above target"}}
   ],
   "indicators": [
-    {{{{"name": "interest_rate", "display_name": "Interest Rate Decision", "context": "raised interest rates by 25 basis points"}}}},
-    {{{{"name": "inflation", "display_name": "Inflation", "context": "inflation remains above target"}}}}
+    {{"name": "interest_rate", "display_name": "Interest Rate Decision", "context": "raised interest rates by 25 basis points"}},
+    {{"name": "inflation", "display_name": "Inflation", "context": "inflation remains above target"}}
   ]
-}}}}
+}}
 
 Input: "OPEC agreed to cut production by 1.5 million barrels per day starting next month. \
 The Saudi energy minister led the negotiations."
 Output:
-{{{{
+{{
   "commodities": [
-    {{{{"name": "crude_oil_wti", "display_name": "WTI Crude Oil", "context": "cut production by 1.5 million barrels per day"}}}},
-    {{{{"name": "crude_oil_brent", "display_name": "Brent Crude Oil", "context": "cut production by 1.5 million barrels per day"}}}}
+    {{"name": "crude_oil_wti", "display_name": "WTI Crude Oil", "context": "cut production by 1.5 million barrels per day"}},
+    {{"name": "crude_oil_brent", "display_name": "Brent Crude Oil", "context": "cut production by 1.5 million barrels per day"}}
   ],
   "people": [
-    {{{{"name": "Saudi Energy Minister", "role": "OPEC negotiator", "context": "led the negotiations"}}}}
+    {{"name": "Saudi Energy Minister", "role": "OPEC negotiator", "context": "led the negotiations"}}
   ],
   "indicators": [
-    {{{{"name": "oil_production", "display_name": "Oil Production", "context": "cut production by 1.5 million barrels per day"}}}}
+    {{"name": "oil_production", "display_name": "Oil Production", "context": "cut production by 1.5 million barrels per day"}}
   ]
-}}}}
+}}
 
 Input: "Markets are trading sideways today with low volume ahead of earnings season."
 Output:
-{{{{
+{{
   "commodities": [],
   "people": [],
   "indicators": []
-}}}}
+}}
 
 ## Output format
 
