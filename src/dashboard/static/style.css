@@ -97,8 +97,19 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-
 .modal-header h3 { color: #e1e4e8; font-size: 1rem; }
 .btn-close { background: none; border: none; color: #c9d1d9; font-size: 1.4rem; cursor: pointer; padding: 0 6px; line-height: 1; }
 .btn-close:hover { color: #e1e4e8; }
-.modal-row { display: flex; gap: 0.5rem; margin-top: 0.5rem; }
+.modal-row { display: flex; gap: 0.5rem; margin-top: 0.5rem; align-items: center; }
 .modal-row input { flex: 1; background: #0d1117; border: 1px solid #30363d; color: #e1e4e8; padding: 7px 10px; border-radius: 6px; font-family: monospace; font-size: 0.82rem; }
+
+/* Inline status pill next to Save button in Pipeline Settings modal */
+.setting-save-status {
+  font-size: 0.78rem;
+  color: #8b949e;
+  transition: color 0.15s ease;
+  min-height: 1.2em;  /* prevent layout shift when status appears */
+}
+.setting-save-status.pending { color: #d29922; }
+.setting-save-status.success { color: #3fb950; }
+.setting-save-status.error   { color: #f85149; }
 .saved-section-header {
   font-size: 0.72rem; color: #8b949e; text-transform: uppercase;
   letter-spacing: 0.05em; font-weight: 600;

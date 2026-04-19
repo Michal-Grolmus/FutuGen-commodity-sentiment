@@ -317,37 +317,106 @@ async function startDemo() {
 }
 
 // ===== SETTINGS MODAL =====
-function showSettingsModal() {
+async function showSettingsModal() {
   document.getElementById("settings-modal").classList.remove("hidden");
-  // Pre-fill with stored or default values
+  // Clear any leftover status from a previous save
+  const statusEl = document.getElementById("setting-save-status");
+  if (statusEl) {
+    statusEl.textContent = "";
+    statusEl.className = "setting-save-status";
+    statusEl.title = "";
+  }
+  // Seed from localStorage immediately so there's no visual flicker while
+  // we fetch the authoritative server state below.
   const stored = JSON.parse(localStorage.getItem("csm_settings") || "{}");
-  document.getElementById("setting-chunk").value = stored.chunk || 10;
-  document.getElementById("setting-chunk-val").textContent = (stored.chunk || 10) + "s";
-  document.getElementById("setting-model").value = stored.model || "small";
-  document.getElementById("setting-lang").value = stored.lang !== undefined ? stored.lang : "en";
+  const chunkInput = document.getElementById("setting-chunk");
+  const chunkDisplay = document.getElementById("setting-chunk-val");
+  const modelSelect = document.getElementById("setting-model");
+  const langSelect = document.getElementById("setting-lang");
+  chunkInput.value = stored.chunk || 10;
+  chunkDisplay.textContent = (stored.chunk || 10) + "s";
+  modelSelect.value = stored.model || "small";
+  langSelect.value = stored.lang !== undefined ? stored.lang : "en";
+  // Overlay live server state (truth wins over localStorage — keeps the modal
+  // in sync with whatever was hot-swapped via /api/settings/pipeline).
+  try {
+    const res = await fetch("/api/config");
+    if (res.ok) {
+      const cfg = await res.json();
+      if (cfg.chunk_duration_s != null) {
+        chunkInput.value = cfg.chunk_duration_s;
+        chunkDisplay.textContent = cfg.chunk_duration_s + "s";
+      }
+      if (cfg.whisper_model) modelSelect.value = cfg.whisper_model;
+      if (cfg.whisper_language !== undefined) langSelect.value = cfg.whisper_language;
+    }
+  } catch (_err) {
+    // Ignore — localStorage fallback is already applied.
+  }
 }
 
 function closeSettingsModal() {
   document.getElementById("settings-modal").classList.add("hidden");
 }
 
-function showRestartCommand() {
-  const chunk = document.getElementById("setting-chunk").value;
-  const model = document.getElementById("setting-model").value;
-  const lang = document.getElementById("setting-lang").value;
+async function applyPipelineSettings() {
+  const chunkEl = document.getElementById("setting-chunk");
+  const modelEl = document.getElementById("setting-model");
+  const langEl = document.getElementById("setting-lang");
+  const btn = document.getElementById("setting-save-btn");
+  const statusEl = document.getElementById("setting-save-status");
+  const chunk = parseInt(chunkEl.value, 10);
+  const model = modelEl.value;
+  const lang = langEl.value;  // "" = auto-detect
+
+  // Persist locally so the UI restores them on reload
   localStorage.setItem("csm_settings", JSON.stringify({ chunk, model, lang }));
 
-  const langPart = lang ? ` WHISPER_LANGUAGE=${lang}` : " WHISPER_LANGUAGE=";
-  const cmd = `WHISPER_MODEL_SIZE=${model} CHUNK_DURATION_S=${chunk}${langPart} python -m src.main --mock -f audio_samples/real/opec_raw.wav`;
+  // Disable button + show pending state — model reload can take a few seconds
+  btn.disabled = true;
+  const originalText = btn.textContent;
+  btn.textContent = "Applying\u2026";
+  statusEl.className = "setting-save-status pending";
+  statusEl.textContent = "Applying to pipeline\u2026";
 
-  alert(
-    "To apply these settings, restart the server:\n\n" +
-    "Linux/Mac:\n" + cmd + "\n\n" +
-    "Windows (PowerShell):\n" +
-    `$env:WHISPER_MODEL_SIZE='${model}'; $env:CHUNK_DURATION_S=${chunk}; $env:WHISPER_LANGUAGE='${lang}'; python -m src.main --mock -f audio_samples/real/opec_raw.wav\n\n` +
-    "Or edit .env and restart."
-  );
-  closeSettingsModal();
+  try {
+    const res = await fetch("/api/settings/pipeline", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        chunk_duration_s: chunk,
+        whisper_model: model,
+        whisper_language: lang,
+      }),
+    });
+    const data = await res.json();
+    if (!res.ok || data.ok === false) {
+      statusEl.className = "setting-save-status error";
+      statusEl.textContent = `\u2717 ${data.error || "Apply failed"}`;
+      return;
+    }
+    const applied = (data.applied || []).length;
+    const pending = data.pending || [];
+    const notes = data.notes || [];
+    const parts = [`\u2713 Applied (${applied})`];
+    if (pending.length) parts.push(`pending: ${pending.join(", ")}`);
+    statusEl.className = "setting-save-status success";
+    statusEl.textContent = parts.join(" \u00b7 ");
+    if (notes.length) statusEl.title = notes.join(" | ");
+    // Auto-close the modal after a short pause so user sees the confirmation
+    setTimeout(() => {
+      closeSettingsModal();
+      statusEl.textContent = "";
+      statusEl.className = "setting-save-status";
+      statusEl.title = "";
+    }, 1800);
+  } catch (err) {
+    statusEl.className = "setting-save-status error";
+    statusEl.textContent = `\u2717 Network error: ${err && err.message ? err.message : err}`;
+  } finally {
+    btn.disabled = false;
+    btn.textContent = originalText;
+  }
 }
 
 // ===== SETTINGS VIEW (API key management, provider-aware) =====

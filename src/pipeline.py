@@ -432,3 +432,105 @@ class Pipeline:
         if built:
             logger.info("API key updated — analysis layer active (provider=%s).", active_provider)
         return built
+
+    async def set_runtime_settings(
+        self,
+        chunk_duration_s: int | None = None,
+        whisper_model: str | None = None,
+        whisper_language: str | None = None,
+    ) -> dict[str, object]:
+        """Live-update pipeline settings without a restart.
+
+        Applies:
+          - chunk_duration_s → persisted to _settings; applies to NEXT stream start
+            (the active source already pre-computed chunk_bytes, changing it
+            mid-stream would desync the ffmpeg read loop).
+          - whisper_language → swapped immediately on the active Transcriber
+            (no model reload — language is a per-call kwarg).
+          - whisper_model     → if model string changed and pipeline is running,
+            loads a new WhisperModel in an executor (blocking, can take several
+            seconds for larger models) and atomically swaps self._transcriber.
+            Old in-flight transcriptions finish on the old model (safe).
+
+        Returns {applied: [...], pending: [...], notes: str} so the UI can
+        surface what's active vs queued for the next run.
+        """
+        applied: list[str] = []
+        pending: list[str] = []
+        notes: list[str] = []
+
+        # 1. Chunk duration — settings-only (next source)
+        if chunk_duration_s is not None:
+            chunk_duration_s = int(chunk_duration_s)
+            if 1 <= chunk_duration_s <= 60:
+                if chunk_duration_s != self._settings.chunk_duration_s:
+                    self._settings.chunk_duration_s = chunk_duration_s
+                    if self._source is not None:
+                        pending.append("chunk_duration_s")
+                        notes.append(
+                            f"Chunk duration {chunk_duration_s}s applies to the "
+                            "next stream start (current source keeps its size)."
+                        )
+                    else:
+                        applied.append("chunk_duration_s")
+                else:
+                    applied.append("chunk_duration_s")
+
+        # 2. Language — swap on active Transcriber immediately
+        if whisper_language is not None:
+            # "" → auto-detect (None internally); "en" / "cs" / ... → force
+            normalized = whisper_language.strip() or None
+            self._settings.whisper_language = normalized or ""
+            if self._transcriber is not None:
+                # Direct attribute swap is safe: Python attribute assign is atomic
+                # under the GIL, and faster-whisper reads self._language per-call.
+                self._transcriber._language = normalized
+            applied.append("whisper_language")
+
+        # 3. Model — reload the WhisperModel if changed AND running
+        if whisper_model is not None:
+            whisper_model = whisper_model.strip()
+            if whisper_model and whisper_model != self._settings.whisper_model_size:
+                old_model = self._settings.whisper_model_size
+                self._settings.whisper_model_size = whisper_model
+                if self._transcriber is not None:
+                    try:
+                        logger.info(
+                            "Hot-swapping Whisper model: %s -> %s (this may take a few seconds)...",
+                            old_model, whisper_model,
+                        )
+                        loop = asyncio.get_running_loop()
+                        new_transcriber = await loop.run_in_executor(
+                            None,
+                            lambda: Transcriber(
+                                model_size=whisper_model,
+                                device=self._settings.whisper_device,
+                                compute_type=self._settings.whisper_compute_type,
+                                language=self._settings.whisper_language or None,
+                            ),
+                        )
+                        # Swap — old Transcriber's in-flight calls are unaffected
+                        self._transcriber = new_transcriber
+                        applied.append("whisper_model")
+                        logger.info("Whisper model hot-swap complete (%s).", whisper_model)
+                    except Exception as exc:
+                        # Revert settings so the pending state matches reality
+                        self._settings.whisper_model_size = old_model
+                        logger.exception("Whisper model hot-swap failed")
+                        notes.append(f"Model reload failed: {exc!s}")
+                else:
+                    applied.append("whisper_model")
+            elif whisper_model == self._settings.whisper_model_size:
+                applied.append("whisper_model")
+
+        return {
+            "ok": True,
+            "applied": sorted(set(applied)),
+            "pending": sorted(set(pending)),
+            "notes": notes,
+            "active": {
+                "chunk_duration_s": self._settings.chunk_duration_s,
+                "whisper_model": self._settings.whisper_model_size,
+                "whisper_language": self._settings.whisper_language,
+            },
+        }

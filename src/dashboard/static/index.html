@@ -299,7 +299,7 @@
         <h3>Pipeline Settings</h3>
         <button class="btn-close" onclick="closeSettingsModal()">×</button>
       </div>
-      <p class="hint">These settings apply to the next pipeline start. Changing them shows the CLI command to restart with the new config.</p>
+      <p class="hint">Changes apply live to the running pipeline — no restart needed. Language swaps instantly; Whisper model reloads in the background (takes a few seconds for larger sizes); chunk duration takes effect on the next stream start.</p>
 
       <div class="settings-row">
         <label for="setting-chunk">Chunk duration (seconds)</label>
@@ -333,7 +333,8 @@
       </div>
 
       <div class="modal-row">
-        <button onclick="showRestartCommand()" class="btn-primary">Show restart command</button>
+        <button id="setting-save-btn" onclick="applyPipelineSettings()" class="btn-primary">Save &amp; apply</button>
+        <span id="setting-save-status" class="setting-save-status" aria-live="polite"></span>
       </div>
     </div>
   </div>

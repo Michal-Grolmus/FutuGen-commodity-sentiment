@@ -288,12 +288,20 @@ def create_app(broadcaster: SignalBroadcaster | None = None) -> FastAPI:
         runtime_anthropic = False
         runtime_openai = False
         provider = "anthropic"
+        # Prefer live settings over env (settings can be mutated at runtime
+        # via /api/settings/pipeline without restarting).
+        whisper_model = os.environ.get("WHISPER_MODEL_SIZE", "small")
+        whisper_language = os.environ.get("WHISPER_LANGUAGE", "en")
+        chunk_duration_s = int(os.environ.get("CHUNK_DURATION_S", "10") or 10)
         if _pipeline_ref is not None:
             settings = getattr(_pipeline_ref, "_settings", None)
             if settings is not None:
                 runtime_anthropic = bool(getattr(settings, "anthropic_api_key", ""))
                 runtime_openai = bool(getattr(settings, "openai_api_key", ""))
                 provider = getattr(settings, "llm_provider", "anthropic") or "anthropic"
+                whisper_model = getattr(settings, "whisper_model_size", whisper_model)
+                whisper_language = getattr(settings, "whisper_language", whisper_language)
+                chunk_duration_s = getattr(settings, "chunk_duration_s", chunk_duration_s)
         mock = os.environ.get("USE_MOCK_ANALYZER", "").lower() == "true"
         has_key = env_anthropic or env_openai or runtime_anthropic or runtime_openai or mock
         return {
@@ -302,7 +310,9 @@ def create_app(broadcaster: SignalBroadcaster | None = None) -> FastAPI:
             "llm_provider": provider,
             "anthropic_active": env_anthropic or runtime_anthropic,
             "openai_active": env_openai or runtime_openai,
-            "whisper_model": os.environ.get("WHISPER_MODEL_SIZE", "small"),
+            "whisper_model": whisper_model,
+            "whisper_language": whisper_language,
+            "chunk_duration_s": chunk_duration_s,
             "price_tracking": os.environ.get("ENABLE_PRICE_TRACKING", "true"),
             "input_source": os.environ.get("INPUT_FILE", "") or os.environ.get("STREAM_URL", ""),
         }
@@ -369,6 +379,58 @@ def create_app(broadcaster: SignalBroadcaster | None = None) -> FastAPI:
         settings = getattr(_pipeline_ref, "_settings", None)
         active_provider = getattr(settings, "llm_provider", "anthropic") if settings else "anthropic"
         return {"ok": True, "active": active, "provider": active_provider}
+
+    @app.post("/api/settings/pipeline")
+    async def set_pipeline_settings(payload: dict[str, object]) -> dict[str, object]:
+        """Live-update chunk duration, Whisper model, and transcript language.
+
+        No restart needed:
+          * language swaps instantly on the active Transcriber.
+          * model triggers an in-executor WhisperModel reload if running.
+          * chunk duration is persisted; applies to the next stream start.
+        """
+        if _pipeline_ref is None:
+            return {"ok": False, "error": "Pipeline not available."}
+        if not hasattr(_pipeline_ref, "set_runtime_settings"):
+            return {"ok": False, "error": "Pipeline doesn't support live settings."}
+
+        # Parse + validate chunk (5-15 per assignment spec)
+        chunk_raw = payload.get("chunk_duration_s")
+        chunk: int | None = None
+        if chunk_raw is not None and str(chunk_raw).strip() != "":
+            try:
+                chunk = int(chunk_raw)
+            except (TypeError, ValueError):
+                return {"ok": False, "error": "chunk_duration_s must be an integer."}
+            if not 5 <= chunk <= 15:
+                return {"ok": False, "error": "chunk_duration_s must be 5-15."}
+
+        # Parse + validate whisper model (must be one of the known sizes)
+        model_raw = payload.get("whisper_model")
+        model: str | None = None
+        if model_raw is not None and str(model_raw).strip() != "":
+            model = str(model_raw).strip()
+            allowed = {"tiny", "base", "small", "medium", "large-v3"}
+            if model not in allowed:
+                return {
+                    "ok": False,
+                    "error": f"whisper_model must be one of {sorted(allowed)}.",
+                }
+
+        # Parse language: empty string = auto-detect (allowed)
+        lang_raw = payload.get("whisper_language")
+        lang: str | None = str(lang_raw).strip() if lang_raw is not None else None
+
+        try:
+            result = await _pipeline_ref.set_runtime_settings(
+                chunk_duration_s=chunk,
+                whisper_model=model,
+                whisper_language=lang,
+            )
+        except Exception as exc:  # noqa: BLE001 — surface any error to the client
+            logger.exception("set_runtime_settings failed")
+            return {"ok": False, "error": f"Apply failed: {exc!s}"}
+        return result
 
     @app.get("/api/events")
     async def event_stream(request: Request) -> EventSourceResponse:
