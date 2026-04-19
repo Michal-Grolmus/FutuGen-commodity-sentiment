@@ -43,3 +43,11 @@ def test_defaults():
         assert args.port is None
         assert args.whisper_model is None
         assert args.chunk_duration is None
+        # Browser auto-open is on by default; --no-browser opts out.
+        assert args.no_browser is False
+
+
+def test_no_browser_flag():
+    with patch("sys.argv", ["main.py", "--no-browser"]):
+        args = parse_args()
+        assert args.no_browser is True

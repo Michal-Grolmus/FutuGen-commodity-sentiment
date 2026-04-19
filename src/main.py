@@ -4,6 +4,7 @@ import argparse
 import asyncio
 import logging
 import os
+import webbrowser
 
 import uvicorn
 
@@ -48,7 +49,28 @@ def parse_args() -> argparse.Namespace:
         "--mock", action="store_true",
         help="Use keyword-based mock analyzer instead of Claude API (zero cost).",
     )
+    parser.add_argument(
+        "--no-browser", action="store_true",
+        help="Don't auto-open a browser tab on the dashboard (default: open).",
+    )
     return parser.parse_args()
+
+
+async def _open_browser_when_ready(url: str, delay: float = 1.0) -> None:
+    """Open the dashboard in the user's default browser once uvicorn has
+    had time to bind its socket. 1 s is plenty on Windows + macOS + Linux;
+    we use webbrowser.open_new_tab so an already-open browser reuses its
+    window. Any failure (headless server, no GUI) is logged and ignored.
+    """
+    await asyncio.sleep(delay)
+    try:
+        opened = webbrowser.open_new_tab(url)
+        if opened:
+            logger.info("Opened dashboard in browser: %s", url)
+        else:
+            logger.info("Browser could not be launched — open %s manually.", url)
+    except Exception as exc:  # noqa: BLE001 — best-effort UX nicety
+        logger.warning("Auto-open browser failed (%s). Open %s manually.", exc, url)
 
 
 async def main() -> None:
@@ -88,7 +110,23 @@ async def main() -> None:
     set_pipeline(pipeline)
 
     has_source = bool(settings.input_file or settings.stream_url)
-    logger.info("Dashboard: http://%s:%d", settings.dashboard_host, settings.dashboard_port)
+    # For the URL shown to the user + given to webbrowser.open, prefer
+    # "localhost" when the bind host is a wildcard or 0.0.0.0 — opening
+    # "http://0.0.0.0" doesn't work on most systems.
+    display_host = settings.dashboard_host
+    if display_host in ("0.0.0.0", "", "::"):
+        display_host = "localhost"
+    dashboard_url = f"http://{display_host}:{settings.dashboard_port}"
+    logger.info("Dashboard: %s", dashboard_url)
+
+    # Opt-out via --no-browser or the CSM_NO_BROWSER env var (handy for
+    # CI / Docker / systemd where a GUI browser makes no sense).
+    env_opt_out = os.environ.get("CSM_NO_BROWSER", "").lower() in ("1", "true", "yes")
+    if not args.no_browser and not env_opt_out:
+        asyncio.create_task(
+            _open_browser_when_ready(dashboard_url),
+            name="open-browser",
+        )
 
     if has_source:
         logger.info("Starting pipeline with source: %s", settings.input_file or settings.stream_url)
