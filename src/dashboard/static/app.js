@@ -760,7 +760,11 @@ function renderStreamFilters() {
   for (const id of ids) {
     const s = streams[id];
     const cls = selectedStreamIds.has(id) ? "active" : "";
-    html += `<button class="filter-btn ${cls}" onclick="toggleStream('${escapeHtml(id)}')">${escapeHtml(s.name)} <span class="count">${s.signals.length}</span></button>`;
+    // Count total signals across all chunks (new data model after phase 2 refactor)
+    const signalCount = (s.chunks || []).reduce(
+      (sum, c) => sum + ((c.signals && c.signals.length) || 0), 0,
+    );
+    html += `<button class="filter-btn ${cls}" onclick="toggleStream('${escapeHtml(id)}')">${escapeHtml(s.name)} <span class="count">${signalCount}</span></button>`;
   }
   panel.innerHTML = html;
 }
