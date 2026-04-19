@@ -13,25 +13,73 @@ const selectedCommodityIds = new Set();
 const streams = {};
 
 // Default saved streams (loaded on first visit, then user edits persist in localStorage)
+// Categories shown in the Saved Streams modal. Items without a category
+// default to "Live streams" for backward compatibility with user-added entries.
+const SAVED_CATEGORIES = [
+  { id: "live", label: "Live streams" },
+  { id: "historical", label: "Historical videos (multi-commodity)" },
+  { id: "file", label: "Audio samples (local files)" },
+  { id: "custom", label: "Your streams" },
+];
+
 const DEFAULT_SAVED_STREAMS = [
-  { name: "Bloomberg Business News", url: "https://www.youtube.com/watch?v=iEpJwprxDdk" },
-  { name: "Bloomberg Originals", url: "https://www.youtube.com/watch?v=DxmDPrfinXY" },
-  { name: "Yahoo Finance 24/7", url: "https://www.youtube.com/watch?v=KQp-e_XQnDE" },
-  { name: "CNBC Marathon", url: "https://www.youtube.com/watch?v=9NyxcX3rhQs" },
-  { name: "Bloomberg TV (channel)", url: "https://www.youtube.com/@markets/live" },
-  { name: "CNBC (channel)", url: "https://www.youtube.com/@CNBC/live" },
-  { name: "Reuters (channel)", url: "https://www.youtube.com/@Reuters/live" },
-  { name: "Kitco News (channel)", url: "https://www.youtube.com/@KitcoNEWS/live" },
-  { name: "Sample: OPEC analysis (file)", url: "audio_samples/real/opec_raw.wav" },
-  { name: "Sample: Fed & Gold (file)", url: "audio_samples/real/fed_raw.wav" },
+  // --- Live streams (24/7 channels) ---
+  { name: "Bloomberg Business News", url: "https://www.youtube.com/watch?v=iEpJwprxDdk", category: "live" },
+  { name: "Bloomberg Originals", url: "https://www.youtube.com/watch?v=DxmDPrfinXY", category: "live" },
+  { name: "Yahoo Finance 24/7", url: "https://www.youtube.com/watch?v=KQp-e_XQnDE", category: "live" },
+  { name: "CNBC Marathon", url: "https://www.youtube.com/watch?v=9NyxcX3rhQs", category: "live" },
+  { name: "Bloomberg TV (channel)", url: "https://www.youtube.com/@markets/live", category: "live" },
+  { name: "CNBC (channel)", url: "https://www.youtube.com/@CNBC/live", category: "live" },
+  { name: "Reuters (channel)", url: "https://www.youtube.com/@Reuters/live", category: "live" },
+  { name: "Kitco News (channel)", url: "https://www.youtube.com/@KitcoNEWS/live", category: "live" },
+
+  // --- Historical videos (multi-commodity — quick segment tests) ---
+  // Short (< 5 min) — rapid end-to-end pipeline validation
+  { name: "Record 2026 Oil Surplus (4:54) — WTI + Brent", category: "historical",
+    url: "https://www.youtube.com/watch?v=yzpoLFKz2CQ" },
+  { name: "OPEC+ Pause Output Hikes (4:24) — WTI + Brent", category: "historical",
+    url: "https://www.youtube.com/watch?v=I-Ld7h3BdYc" },
+  { name: "OPEC+ +411k bpd July (3:10) — WTI + Brent", category: "historical",
+    url: "https://www.youtube.com/watch?v=3ptN5lr8qC4" },
+  // Medium (5-15 min) — typical segment aggregation, several sub-signals
+  { name: "OPEC+ Global Energy Shock — Vantage (6:20) — oil + macro", category: "historical",
+    url: "https://www.youtube.com/watch?v=-ORZDlAQ0uY" },
+  { name: "OPEC+ July Production Boost (7:51) — WTI + Brent", category: "historical",
+    url: "https://www.youtube.com/watch?v=vqDwN6zKias" },
+  { name: "Kitco: Peter Schiff Gold Breakout (11:29) — gold + dollar", category: "historical",
+    url: "https://www.youtube.com/watch?v=1HVUWs-Jmtc" },
+  { name: "Bloomberg: Oil Traders 2026 (12:44) — oil + geopolitics", category: "historical",
+    url: "https://www.youtube.com/watch?v=oxcjNfx8Cko" },
+  // Long (> 15 min) — multi-segment tests, good for hierarchical view demo
+  { name: "Kitco: Gold/Silver/Copper Phase 2026 (28:49) — 3 commodities", category: "historical",
+    url: "https://www.youtube.com/watch?v=-sx9JEmL3s4" },
+  { name: "OPEC+ 2026 Webinar (32:16) — WTI + Brent deep-dive", category: "historical",
+    url: "https://www.youtube.com/watch?v=ZAaprlgm1WM" },
+  { name: "Schachter: Oil $80+ 2026 (37:44) — oil + natural gas", category: "historical",
+    url: "https://www.youtube.com/watch?v=jG5WoTms0TI" },
+  { name: "Gijsels: Gold $10k & Silver $200 (38:58) — gold + silver", category: "historical",
+    url: "https://www.youtube.com/watch?v=wMYUp4RHz7k" },
+
+  // --- Local audio files (offline demo) ---
+  { name: "Sample: OPEC analysis (file)", url: "audio_samples/real/opec_raw.wav", category: "file" },
+  { name: "Sample: Fed & Gold (file)", url: "audio_samples/real/fed_raw.wav", category: "file" },
 ];
 
 function loadSavedStreams() {
+  let stored = [];
   try {
-    const stored = localStorage.getItem("csm_saved_streams");
-    if (stored) return JSON.parse(stored);
+    const raw = localStorage.getItem("csm_saved_streams");
+    if (raw) stored = JSON.parse(raw);
   } catch {}
-  return [...DEFAULT_SAVED_STREAMS];
+  // Merge: keep user entries, add any DEFAULT not yet present (by URL).
+  // Also ensures newly added defaults (e.g. Historical videos) appear on next
+  // load without destroying prior user edits.
+  const storedUrls = new Set(stored.map(s => s.url));
+  const merged = [...stored];
+  for (const def of DEFAULT_SAVED_STREAMS) {
+    if (!storedUrls.has(def.url)) merged.push(def);
+  }
+  return merged.map(s => ({ ...s, category: s.category || "custom" }));
 }
 
 function persistSavedStreams(list) {
@@ -501,20 +549,36 @@ function renderSavedStreams() {
     return;
   }
   list.innerHTML = "";
-  for (let i = 0; i < savedStreams.length; i++) {
-    const s = savedStreams[i];
-    const isActive = Object.values(streams).some(a => a.url === s.url);
-    const item = document.createElement("div");
-    item.className = "saved-stream-item";
-    item.innerHTML = `
-      <span class="saved-badge ${isActive ? "active" : "inactive"}">${isActive ? "active" : "inactive"}</span>
-      <div style="flex:1;min-width:0">
-        <div class="saved-name">${escapeHtml(s.name)}</div>
-        <div class="saved-url">${escapeHtml(s.url)}</div>
-      </div>
-      <button class="btn-sm" onclick="addFromSaved(${i})" ${isActive ? "disabled" : ""}>Start</button>
-      <button class="btn-remove" onclick="deleteSavedStream(${i})">Remove</button>`;
-    list.appendChild(item);
+
+  // Group streams by category, preserving original index for correct callbacks
+  const groups = new Map();
+  for (const cat of SAVED_CATEGORIES) groups.set(cat.id, []);
+  savedStreams.forEach((s, i) => {
+    const cat = s.category && groups.has(s.category) ? s.category : "custom";
+    groups.get(cat).push({ s, i });
+  });
+
+  for (const cat of SAVED_CATEGORIES) {
+    const entries = groups.get(cat.id);
+    if (!entries || entries.length === 0) continue;
+    const header = document.createElement("div");
+    header.className = "saved-section-header";
+    header.textContent = cat.label;
+    list.appendChild(header);
+    for (const { s, i } of entries) {
+      const isActive = Object.values(streams).some(a => a.url === s.url);
+      const item = document.createElement("div");
+      item.className = "saved-stream-item";
+      item.innerHTML = `
+        <span class="saved-badge ${isActive ? "active" : "inactive"}">${isActive ? "active" : "inactive"}</span>
+        <div style="flex:1;min-width:0">
+          <div class="saved-name">${escapeHtml(s.name)}</div>
+          <div class="saved-url">${escapeHtml(s.url)}</div>
+        </div>
+        <button class="btn-sm" onclick="addFromSaved(${i})" ${isActive ? "disabled" : ""}>Start</button>
+        <button class="btn-remove" onclick="deleteSavedStream(${i})">Remove</button>`;
+      list.appendChild(item);
+    }
   }
 }
 
@@ -522,7 +586,7 @@ function addSavedStream() {
   const name = document.getElementById("new-saved-name").value.trim();
   const url = document.getElementById("new-saved-url").value.trim();
   if (!name || !url) return alert("Name and URL are required.");
-  savedStreams.push({ name, url });
+  savedStreams.push({ name, url, category: "custom" });
   persistSavedStreams(savedStreams);
   document.getElementById("new-saved-name").value = "";
   document.getElementById("new-saved-url").value = "";
