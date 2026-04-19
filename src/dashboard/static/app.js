@@ -166,14 +166,22 @@ async function saveApiKey() {
     });
     const data = await res.json();
     if (data.ok && data.active) {
+      // Key accepted by the running pipeline — advance to the app
       await loadCommodities();
       showApp("streams");
       setStatus("Ready", "status-ok");
+    } else if (data.ok && !data.active) {
+      // Server acknowledged but pipeline is not active (no source yet or empty key)
+      await loadCommodities();
+      showApp("streams");
+      setStatus("Ready (add a stream to start analysis)", "status-ok");
     } else if (data.error) {
-      alert(`Key saved locally. Pipeline not reachable: ${data.error}\nRestart with ${meta.envVar}=<key>`);
+      alert(`Key saved locally, but the server returned: ${data.error}\n\n` +
+            `You can also set ${meta.envVar} in .env and restart.`);
     }
   } catch (e) {
-    alert("Failed to activate key: " + e.message);
+    alert("Failed to reach the server: " + e.message +
+          "\nKey is saved locally; try refreshing the page.");
   }
 }
 

@@ -80,21 +80,22 @@ async def main() -> None:
     )
     server = uvicorn.Server(config)
 
+    # Always instantiate Pipeline so live settings (API key, provider) can be
+    # applied via the dashboard even before a stream/file is attached.
+    # Pipeline.run() is only started when there's an input source.
+    pipeline = Pipeline(settings, broadcaster)
+    from src.dashboard.server import set_pipeline
+    set_pipeline(pipeline)
+
     has_source = bool(settings.input_file or settings.stream_url)
+    logger.info("Dashboard: http://%s:%d", settings.dashboard_host, settings.dashboard_port)
 
     if has_source:
-        # Full mode: pipeline + dashboard
-        pipeline = Pipeline(settings, broadcaster)
-        from src.dashboard.server import set_pipeline
-        set_pipeline(pipeline)
-        logger.info("Dashboard: http://%s:%d", settings.dashboard_host, settings.dashboard_port)
         logger.info("Starting pipeline with source: %s", settings.input_file or settings.stream_url)
         await asyncio.gather(pipeline.run(), server.serve())
     else:
-        # Dashboard-only mode: onboarding + demo replay
-        logger.info("Dashboard: http://%s:%d", settings.dashboard_host, settings.dashboard_port)
-        logger.info("No input source — starting in dashboard-only mode (onboarding + demo).")
-        logger.info("Use --input-file or --stream-url to start the pipeline.")
+        logger.info("No input source — dashboard-only mode (onboarding + demo + live settings).")
+        logger.info("Add --input-file or --stream-url to start the processing pipeline.")
         await server.serve()
 
 
