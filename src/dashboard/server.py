@@ -87,6 +87,15 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         response.headers["X-Frame-Options"] = "DENY"
         response.headers["X-XSS-Protection"] = "1; mode=block"
         response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        # Always send no-cache for HTML + JS + CSS — we iterate frequently and
+        # a stale cached dashboard silently breaks features (symptoms: Start
+        # button does nothing, etc.). This costs nothing in practice because
+        # the app is a dev-grade demo.
+        path = request.url.path
+        if path == "/" or path.endswith((".html", ".js", ".css", ".json")):
+            response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+            response.headers["Pragma"] = "no-cache"
+            response.headers["Expires"] = "0"
         return response
 
 
@@ -258,7 +267,18 @@ def create_app(broadcaster: SignalBroadcaster | None = None) -> FastAPI:
     @app.get("/", response_class=HTMLResponse)
     async def index() -> HTMLResponse:
         html_path = STATIC_DIR / "index.html"
-        return HTMLResponse(content=html_path.read_text(encoding="utf-8"))
+        html = html_path.read_text(encoding="utf-8")
+        # Cache-bust: append mtime of app.js / style.css to <script> / <link> refs.
+        # Browsers treat /static/app.js?v=123 and /static/app.js?v=456 as
+        # different resources → forced fresh fetch on every server restart.
+        try:
+            js_v = int((STATIC_DIR / "app.js").stat().st_mtime)
+            css_v = int((STATIC_DIR / "style.css").stat().st_mtime)
+            html = html.replace("/static/app.js", f"/static/app.js?v={js_v}")
+            html = html.replace("/static/style.css", f"/static/style.css?v={css_v}")
+        except OSError:
+            pass  # If stat fails, serve without cache-bust — no-cache headers still apply
+        return HTMLResponse(content=html)
 
     @app.get("/api/config")
     async def get_config() -> dict[str, object]:
