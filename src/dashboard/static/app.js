@@ -199,14 +199,16 @@ async function saveApiKey() {
     });
     const data = await res.json();
     if (data.ok && data.active) {
-      // Key accepted by the running pipeline — advance to the app
+      // Key accepted by the running pipeline — advance to the app + open SSE
       await loadCommodities();
       showApp("streams");
+      connect("/api/events");
       setStatus("Ready", "status-ok");
     } else if (data.ok && !data.active) {
       // Server acknowledged but pipeline is not active (no source yet or empty key)
       await loadCommodities();
       showApp("streams");
+      connect("/api/events");
       setStatus("Ready (add a stream to start analysis)", "status-ok");
     } else if (data.error) {
       alert(`Key saved locally, but the server returned: ${data.error}\n\n` +
@@ -563,6 +565,10 @@ async function submitAddStream() {
 }
 
 async function startPipelineWithSource(source) {
+  // Safety net: without an open SSE, events produced by the pipeline never
+  // reach the UI and the user sees "Waiting for transcript..." forever.
+  if (!activeSSE) connect("/api/events");
+  setStatus("Starting pipeline (10–30s for live streams)...", "status-connecting");
   try {
     const res = await fetch("/api/pipeline/start", {
       method: "POST",
@@ -570,6 +576,7 @@ async function startPipelineWithSource(source) {
       body: JSON.stringify({ source }),
     });
     const data = await res.json();
+    console.log("[pipeline/start]", data);
     if (data.started) {
       setStatus("Processing", "status-ok");
     } else if (data.reason === "pipeline already running") {
@@ -921,14 +928,17 @@ function renderSignalItem(sig) {
 // ===== SSE =====
 function connect(endpoint) {
   if (activeSSE) activeSSE.close();
+  console.log("[SSE] connecting to", endpoint);
   const source = new EventSource(endpoint);
   activeSSE = source;
 
   source.onopen = () => {
+    console.log("[SSE] open");
     if (!isDemoMode) setStatus("Connected", "status-connected");
   };
 
-  source.onerror = () => {
+  source.onerror = (e) => {
+    console.warn("[SSE] error/closed", e);
     if (isDemoMode) { setStatus("Demo Complete", "status-demo"); source.close(); activeSSE = null; return; }
     setStatus("Reconnecting...", "status-connecting");
     source.close(); activeSSE = null;
