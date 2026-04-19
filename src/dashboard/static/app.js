@@ -605,6 +605,113 @@ async function showSignalSource(streamId, sigRef) {
   }
 }
 
+// Segment-level detail modal (counterpart to showSignalSource, for super-events).
+// Shows: stream, direction+conf+timeframe, duration, primary + secondaries,
+// full summary + rationale, sentiment arc, every sub-signal that belongs to
+// this segment (walked from cached chunks).
+async function showSegmentSource(encoded) {
+  let seg;
+  try { seg = JSON.parse(decodeURIComponent(encoded)); } catch (_e) { return; }
+  if (!seg) return;
+
+  const body = document.getElementById("source-modal-body");
+  const stream = streams[seg.stream_id] || { name: seg.stream_id, url: "", type: "unknown" };
+  const commodityName = commodities[seg.primary_commodity]?.display_name || seg.primary_commodity;
+  const dir = seg.direction || "neutral";
+  const conf = Math.round((seg.confidence || 0) * 100);
+  const tfRaw = seg.overall_timeframe || seg.timeframe || "";
+  const tfLabel = tfRaw ? String(tfRaw).replace("_", "-") : "—";
+  const startTs = seg.start_time ? new Date(seg.start_time).toLocaleString() : "—";
+  const endTs = seg.end_time ? new Date(seg.end_time).toLocaleString() : "ongoing";
+  const durationChunks = (seg.chunk_ids || []).length;
+  const secondariesHtml = (seg.secondary_commodities || []).length
+    ? (seg.secondary_commodities || []).map(c => {
+        const name = commodities[c]?.display_name || c;
+        return `<span class="seg-secondary-pill">${escapeHtml(name)}</span>`;
+      }).join(" ")
+    : '<span style="color:#8b949e">none</span>';
+
+  // Walk cached chunks to collect every sub-signal tied to this segment's
+  // chunk_ids. This mirrors renderCommoditySegmentCard's logic but lists
+  // ALL signals (not just top-3) for the drill-down view.
+  const chunkIds = new Set(seg.chunk_ids || []);
+  const subs = [];
+  for (const s of Object.values(streams)) {
+    for (const c of s.chunks) {
+      if (!chunkIds.has(c.chunk_id)) continue;
+      for (const sig of c.signals || []) {
+        if (sig.commodity === seg.primary_commodity) {
+          subs.push({ ...sig, _chunk_ts: c.ts, _chunk_id: c.chunk_id });
+        }
+      }
+    }
+  }
+  const subsHtml = subs.length > 0
+    ? subs.map(sig => `
+        <div class="subsignal-row">
+          <span class="subsignal-dir subsignal-dir-${sig.direction}">${sig.direction}</span>
+          <span class="subsignal-conf">${Math.round((sig.confidence || 0) * 100)}%</span>
+          <span class="subsignal-rationale">${escapeHtml(sig.rationale || "")}</span>
+          <span class="subsignal-ts">${escapeHtml(sig._chunk_ts || "")}</span>
+        </div>`).join("")
+    : '<div style="color:#8b949e;font-size:0.82rem">No sub-signals cached (older chunks may have rolled off).</div>';
+
+  const urlHtml = stream.url && (stream.url.startsWith("http") || stream.url.startsWith("rtmp"))
+    ? `<a href="${escapeHtml(stream.url)}" target="_blank" class="link">${escapeHtml(stream.url)}</a>`
+    : escapeHtml(stream.url || "—");
+
+  const closedRow = seg.is_closed
+    ? `<div class="source-field">
+         <div class="source-field-label">Closed</div>
+         <div class="source-field-value"><span class="seg-badge-closed">closed</span> · reason: <code>${escapeHtml(seg.close_reason || "—")}</code></div>
+       </div>` : '';
+
+  body.innerHTML = `
+    <div class="source-field">
+      <div class="source-field-label">Stream</div>
+      <div class="source-field-value"><strong>${escapeHtml(stream.name)}</strong><br>${urlHtml}</div>
+    </div>
+    <div class="source-field">
+      <div class="source-field-label">Super-event — primary commodity</div>
+      <div class="source-field-value">
+        <strong>${escapeHtml(commodityName)}</strong> —
+        <span class="signal-dir ${dir}">${dir}</span>
+        at ${conf}% confidence · <span class="seg-tf seg-tf-${tfRaw === "medium_term" ? "medium" : "short"}">${escapeHtml(tfLabel)}</span>
+      </div>
+    </div>
+    <div class="source-field">
+      <div class="source-field-label">Secondary commodities</div>
+      <div class="source-field-value">${secondariesHtml}</div>
+    </div>
+    <div class="source-field">
+      <div class="source-field-label">Duration</div>
+      <div class="source-field-value">${startTs} → ${endTs} · ${durationChunks} chunk${durationChunks !== 1 ? "s" : ""}</div>
+    </div>
+    ${closedRow}
+    ${seg.sentiment_arc ? `<div class="source-field">
+      <div class="source-field-label">Sentiment arc</div>
+      <div class="source-field-value">${escapeHtml(seg.sentiment_arc)}</div>
+    </div>` : ''}
+    <div class="source-field">
+      <div class="source-field-label">Summary</div>
+      <div class="source-field-value">${escapeHtml(seg.summary || "(not analyzed yet)")}</div>
+    </div>
+    ${seg.rationale ? `<div class="source-field">
+      <div class="source-field-label">Rationale</div>
+      <div class="source-field-value">${escapeHtml(seg.rationale)}</div>
+    </div>` : ''}
+    <div class="source-field">
+      <div class="source-field-label">Sub-signals in this segment (${subs.length})</div>
+      <div class="source-field-value" style="display:flex;flex-direction:column;gap:0.35rem">${subsHtml}</div>
+    </div>
+    <div class="source-field">
+      <div class="source-field-label">Segment ID</div>
+      <div class="source-field-value"><code>${escapeHtml(seg.segment_id || "")}</code></div>
+    </div>`;
+
+  document.getElementById("source-modal").classList.remove("hidden");
+}
+
 function closeSourceModal() {
   document.getElementById("source-modal").classList.add("hidden");
 }
@@ -1011,6 +1118,8 @@ function renderActiveSegmentCard(seg) {
     ? `<span class="seg-secondary">also: ${seg.secondary_commodities.map(c => escapeHtml(c)).join(', ')}</span>`
     : '';
   const arc = seg.sentiment_arc ? `<div class="seg-arc">${escapeHtml(seg.sentiment_arc)}</div>` : '';
+  const tf = segmentTimeframeBadge(seg);
+  const srcBtn = segmentSourceButton(seg);
   return `
     <div class="segment-card segment-active segment-${dir}">
       <div class="segment-header">
@@ -1019,12 +1128,36 @@ function renderActiveSegmentCard(seg) {
         <span class="segment-dir segment-dir-${dir}">${dir}</span>
         <span class="segment-conf">${conf}%</span>
         <span class="segment-chunks">${(seg.chunk_ids || []).length} chunks</span>
+        ${tf}
         ${secondaries}
+        ${srcBtn}
       </div>
       <div class="segment-summary">${escapeHtml(seg.summary || 'Analyzing…')}</div>
       ${arc}
       ${seg.rationale ? `<div class="segment-rationale">${escapeHtml(seg.rationale)}</div>` : ''}
     </div>`;
+}
+
+// Segment timeframe ("short-term" / "medium-term") as an inline badge.
+// Source events may label it `overall_timeframe` (SegmentAggregator snapshot)
+// or `timeframe` (demo simulator / ad-hoc); we accept either for forward
+// compatibility.
+function segmentTimeframeBadge(seg) {
+  const raw = seg.overall_timeframe || seg.timeframe || '';
+  if (!raw) return '';
+  const label = String(raw).replace('_', '-');
+  const cls = raw === 'medium_term' ? 'seg-tf seg-tf-medium' : 'seg-tf seg-tf-short';
+  return `<span class="${cls}" title="Overall timeframe">${escapeHtml(label)}</span>`;
+}
+
+// "Source" button on a segment card — opens the shared source modal with
+// the full segment context (stream, primary + secondaries, sub-signals,
+// chunks, timing). The segment is round-tripped via encodeURIComponent so
+// every attribute the modal needs is available without another fetch.
+function segmentSourceButton(seg) {
+  if (!seg || !seg.segment_id) return '';
+  const encoded = encodeURIComponent(JSON.stringify(seg));
+  return `<button class="btn-source btn-seg-source" onclick="showSegmentSource('${encoded}')" title="Show segment details">Source</button>`;
 }
 
 function toggleChunksExpand(id) {
@@ -1549,6 +1682,8 @@ function renderCommoditySegmentCard(seg, commodityId) {
        </div>`
     : '';
 
+  const tf = segmentTimeframeBadge(seg);
+  const srcBtn = segmentSourceButton(seg);
   return `
     <div class="segment-card segment-${segState} segment-${dir}">
       <div class="segment-header">
@@ -1556,6 +1691,8 @@ function renderCommoditySegmentCard(seg, commodityId) {
         <span class="segment-title">${escapeHtml(seg.summary || 'Segment')}</span>
         <span class="segment-dir segment-dir-${dir}">${dir}</span>
         <span class="segment-conf">${conf}%</span>
+        ${tf}
+        ${srcBtn}
       </div>
       <div class="segment-meta">
         ${escapeHtml(streamLabel)} · ${startTs} → ${endTs} · ${durationChunks} chunks

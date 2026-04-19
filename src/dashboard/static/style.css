@@ -504,6 +504,36 @@ a.stream-url:hover { text-decoration: underline; }
 .segment-conf { font-size: 0.78rem; color: #c9d1d9; font-weight: 600; }
 .segment-chunks { font-size: 0.7rem; color: #8b949e; }
 .seg-secondary { font-size: 0.7rem; color: #8b949e; font-style: italic; }
+
+/* Timeframe pill on segment header — distinguishes short-term vs medium-term
+   super-events so the user can tell at a glance which horizon a signal sits
+   in. Subtle border+tinted-bg so it doesn't compete with direction/conf. */
+.seg-tf {
+  font-size: 0.68rem;
+  padding: 0.08rem 0.4rem;
+  border-radius: 3px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: lowercase;
+  border: 1px solid #30363d;
+  color: #8b949e;
+  background: #161b22;
+}
+.seg-tf-short  { color: #79b8ff; border-color: #1f3f63; background: #0d253f; }
+.seg-tf-medium { color: #d2a8ff; border-color: #3b2a5a; background: #1c1432; }
+
+/* "Source" button nested in a segment-header — align vertically with the
+   pills so the row stays one-line. */
+.btn-seg-source { margin-left: auto; align-self: center; }
+
+/* Pills for secondary commodities inside the Source modal */
+.seg-secondary-pill {
+  display: inline-block;
+  font-size: 0.72rem; padding: 0.1rem 0.45rem;
+  border-radius: 3px;
+  background: #0d253f; color: #79b8ff; border: 1px solid #1f3f63;
+  margin-right: 0.25rem; margin-bottom: 0.15rem;
+}
 .segment-meta { font-size: 0.7rem; color: #8b949e; margin-top: 0.15rem; }
 .segment-summary { font-size: 0.88rem; color: #c9d1d9; margin: 0.3rem 0; line-height: 1.4; }
 .seg-arc {
