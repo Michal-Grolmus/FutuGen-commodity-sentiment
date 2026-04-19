@@ -1,10 +1,12 @@
 FROM python:3.12-slim
 
-# ffmpeg needed for live stream ingestion (yt-dlp pipes to ffmpeg)
-# File ingestion uses PyAV (Python package) so no ffmpeg needed for demos
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    ffmpeg \
-    && rm -rf /var/lib/apt/lists/* /var/cache/apt/*
+# File and stream ingestion both run on PyAV (bundled libavformat), so no
+# external ffmpeg binary is required — `pip install av` ships a working
+# decoder. StreamIngestor auto-detects ffmpeg on PATH and uses the faster
+# subprocess path when present; otherwise it falls back to PyAV seamlessly.
+# To opt into the ffmpeg backend, uncomment the apt line below (+80 MB image).
+# RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg \
+#     && rm -rf /var/lib/apt/lists/* /var/cache/apt/*
 
 WORKDIR /app
 
