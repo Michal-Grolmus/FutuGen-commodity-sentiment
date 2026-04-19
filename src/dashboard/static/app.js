@@ -33,32 +33,39 @@ const DEFAULT_SAVED_STREAMS = [
   { name: "Reuters (channel)", url: "https://www.youtube.com/@Reuters/live", category: "live" },
   { name: "Kitco News (channel)", url: "https://www.youtube.com/@KitcoNEWS/live", category: "live" },
 
-  // --- Historical videos (multi-commodity — quick segment tests) ---
-  // Short (< 5 min) — rapid end-to-end pipeline validation
-  { name: "Record 2026 Oil Surplus (4:54) — WTI + Brent", category: "historical",
-    url: "https://www.youtube.com/watch?v=yzpoLFKz2CQ" },
-  { name: "OPEC+ Pause Output Hikes (4:24) — WTI + Brent", category: "historical",
-    url: "https://www.youtube.com/watch?v=I-Ld7h3BdYc" },
-  { name: "OPEC+ +411k bpd July (3:10) — WTI + Brent", category: "historical",
-    url: "https://www.youtube.com/watch?v=3ptN5lr8qC4" },
-  // Medium (5-15 min) — typical segment aggregation, several sub-signals
-  { name: "OPEC+ Global Energy Shock — Vantage (6:20) — oil + macro", category: "historical",
-    url: "https://www.youtube.com/watch?v=-ORZDlAQ0uY" },
-  { name: "OPEC+ July Production Boost (7:51) — WTI + Brent", category: "historical",
-    url: "https://www.youtube.com/watch?v=vqDwN6zKias" },
-  { name: "Kitco: Peter Schiff Gold Breakout (11:29) — gold + dollar", category: "historical",
-    url: "https://www.youtube.com/watch?v=1HVUWs-Jmtc" },
-  { name: "Bloomberg: Oil Traders 2026 (12:44) — oil + geopolitics", category: "historical",
-    url: "https://www.youtube.com/watch?v=oxcjNfx8Cko" },
-  // Long (> 15 min) — multi-segment tests, good for hierarchical view demo
-  { name: "Kitco: Gold/Silver/Copper Phase 2026 (28:49) — 3 commodities", category: "historical",
-    url: "https://www.youtube.com/watch?v=-sx9JEmL3s4" },
-  { name: "OPEC+ 2026 Webinar (32:16) — WTI + Brent deep-dive", category: "historical",
-    url: "https://www.youtube.com/watch?v=ZAaprlgm1WM" },
-  { name: "Schachter: Oil $80+ 2026 (37:44) — oil + natural gas", category: "historical",
-    url: "https://www.youtube.com/watch?v=jG5WoTms0TI" },
-  { name: "Gijsels: Gold $10k & Silver $200 (38:58) — gold + silver", category: "historical",
-    url: "https://www.youtube.com/watch?v=wMYUp4RHz7k" },
+  // --- Historical videos (multi-commodity, front-loaded) ---
+  // All entries have multiple commodities mentioned within the FIRST 2 MINUTES,
+  // so credits aren't burned waiting for the speaker to get to the point.
+  // CNBC TV18 daily briefings are news-format: the commodities are announced
+  // in the very first sentence.
+
+  // Ultra-short briefings (< 2 min) — the entire video is a multi-commodity scan
+  { name: "CNBC TV18: Oil + Copper record highs (1:27)", category: "historical",
+    url: "https://www.youtube.com/watch?v=X_A08N9GO9g" },
+  { name: "CNBC TV18: Gold $4k + Copper 3-mo high (1:26)", category: "historical",
+    url: "https://www.youtube.com/watch?v=Ao6bO2CXm0E" },
+  { name: "CNBC TV18: Oil firm, Copper + Gold slip (1:31) — 3 commodities", category: "historical",
+    url: "https://www.youtube.com/watch?v=tziI68GYIj4" },
+  { name: "CNBC TV18: Copper record, Crude -2%, Gold gains (1:34) — 3 commodities", category: "historical",
+    url: "https://www.youtube.com/watch?v=9F30Dsb74l0" },
+  { name: "CNBC TV18: Crude steady, Gold 2-mo low (1:36)", category: "historical",
+    url: "https://www.youtube.com/watch?v=McyesJLRhGw" },
+
+  // Short (5–10 min) — multi-commodity, news/outlook format
+  { name: "Commodities rally: Gold + Oil (5:03)", category: "historical",
+    url: "https://www.youtube.com/watch?v=eOmzQJn92rA" },
+  { name: "Gold + Silver + Copper 2026 outlook (6:18) — 3 commodities", category: "historical",
+    url: "https://www.youtube.com/watch?v=Xmc83f-JOfU" },
+  { name: "Oil + Gold + Silver + Copper trade setups (8:15) — 4 commodities", category: "historical",
+    url: "https://www.youtube.com/watch?v=pU9Y3U0az9E" },
+
+  // Medium (10–15 min) — multi-commodity analysis with front-loaded summary
+  { name: "CNBC TV18 Big C: Oils + Metals outlook (10:56)", category: "historical",
+    url: "https://www.youtube.com/watch?v=rS4KlK3BUh0" },
+  { name: "CNBC TV18: Gold + Silver Commodity Champions (11:16)", category: "historical",
+    url: "https://www.youtube.com/watch?v=FIGIJ__rIUI" },
+  { name: "CNBC TV18: Gold + Silver + Copper + Crude (13:45) — 4 commodities", category: "historical",
+    url: "https://www.youtube.com/watch?v=o0OMr9yerf4" },
 
   // --- Local audio files (offline demo) ---
   { name: "Sample: OPEC analysis (file)", url: "audio_samples/real/opec_raw.wav", category: "file" },
@@ -71,11 +78,13 @@ function loadSavedStreams() {
     const raw = localStorage.getItem("csm_saved_streams");
     if (raw) stored = JSON.parse(raw);
   } catch {}
-  // Merge: keep user entries, add any DEFAULT not yet present (by URL).
-  // Also ensures newly added defaults (e.g. Historical videos) appear on next
-  // load without destroying prior user edits.
-  const storedUrls = new Set(stored.map(s => s.url));
-  const merged = [...stored];
+  // The `historical` category is curated by the app — we wipe stored entries
+  // in that category on every load so curation updates (e.g. replacing a
+  // slow-start video with a front-loaded one) always propagate. User-added
+  // entries (category "custom") and their live/file overrides are preserved.
+  const filteredStored = stored.filter(s => s.category !== "historical");
+  const storedUrls = new Set(filteredStored.map(s => s.url));
+  const merged = [...filteredStored];
   for (const def of DEFAULT_SAVED_STREAMS) {
     if (!storedUrls.has(def.url)) merged.push(def);
   }
