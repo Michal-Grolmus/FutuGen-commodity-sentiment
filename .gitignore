@@ -17,6 +17,9 @@ build/
 venv/
 .coverage
 .claude/
+# Internal Claude Code / handoff docs — not for publication
+CLAUDE.md
+docs/PROJECT_STATE.md
 # signals_log.jsonl is committed as seed (historical backtests)
 # Runtime additions stay but aren't re-committed; gitignore selectively:
 # (we keep the file tracked but accept local modifications)

@@ -169,7 +169,7 @@ Při reálném provozu se ukazuje, že na 24/7 streamu (Yahoo Finance Live) mode
 
 S **noise gate** (přeskakování chunků bez komoditních keywordů, viz sekce 9) lze API volání snížit o 60-70 %, tj. stejný rozpočet pokryje 50-60 h Claude, nebo 100+ h OpenAI.
 
-Při **30 min demo** na recruitera: ~$0.15 Claude / ~$0.08 OpenAI — zcela zanedbatelné.
+Při **30 min živém demu**: ~$0.15 Claude / ~$0.08 OpenAI — zcela zanedbatelné.
 
 ---
 
