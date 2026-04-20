@@ -26,23 +26,24 @@ Real-time pipeline that extracts speech from live streams, identifies commodity-
 
 ## Quick Start
 
+### Windows (one-click)
+
+Double-click **`run.bat`**. On first run it creates a `.venv`, installs dependencies and starts the dashboard. Subsequent runs just launch the app.
+
+### Cross-platform
+
 ```bash
-# Clone and install
 git clone <repo-url>
-cd commodity-sentiment-monitor
+cd FutuGen-commodity-sentiment
 pip install -e ".[dev]"
-
-# Start dashboard (no configuration needed!)
 python -m src.main
-
 # Open http://localhost:8000 → click "Start Demo" to see it in action
 ```
 
-The app starts in **onboarding mode** with an interactive demo — no API key required.
-For live analysis, set `ANTHROPIC_API_KEY` in `.env` and provide an audio source.
+The app starts in **onboarding mode** — no API key required. You paste an Anthropic **or** OpenAI key from the onboarding screen (Settings view lets you switch providers at runtime).
 
 ```bash
-# Run with local audio file (uses real Claude API)
+# Run with local audio file
 python -m src.main --input-file audio_samples/sample_01_opec.wav
 
 # Run with live YouTube stream
@@ -73,15 +74,16 @@ No `.env` file required — the app starts in onboarding mode.
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
-| `ANTHROPIC_API_KEY` | Yes | - | Anthropic API key for Claude |
-| `INPUT_FILE` | Yes* | - | Path to local audio file |
-| `STREAM_URL` | Yes* | - | Live stream URL (YouTube, HLS, RTMP) |
-| `WHISPER_MODEL_SIZE` | No | `base` | Whisper model: tiny/base/small/medium/large-v3 |
+| `ANTHROPIC_API_KEY` | Either* | - | Anthropic API key for Claude Haiku |
+| `OPENAI_API_KEY` | Either* | - | OpenAI API key for gpt-4o-mini |
+| `INPUT_FILE` | No | - | Path to local audio file (optional — onboarding if absent) |
+| `STREAM_URL` | No | - | Live stream URL (YouTube, HLS, RTMP) |
+| `WHISPER_MODEL_SIZE` | No | `small` | Whisper model: tiny/base/small/medium/large-v3 |
 | `WHISPER_DEVICE` | No | `cpu` | `cpu` or `cuda` |
 | `CHUNK_DURATION_S` | No | `10` | Audio chunk duration (5-15 seconds) |
 | `DASHBOARD_PORT` | No | `8000` | Web dashboard port |
 
-*One of `INPUT_FILE` or `STREAM_URL` must be set.
+*Either provider works — choose one at onboarding or in the Settings view. The app also runs fully without a key in demo / transcription-only mode.
 
 ## Usage
 
@@ -108,10 +110,11 @@ Start the app without configuration → onboarding page appears with:
 - **Stream discovery** — curated list of Bloomberg, CNBC, and recorded sources
 - **API key setup** — instructions for connecting Anthropic API
 
-Dashboard has two views accessible from the top nav:
+Dashboard has four views accessible from the top nav:
 
 **Streams view** — each active stream shows:
 - Live transcript (updates as Whisper processes audio)
+- Pause / Resume / Remove controls per stream
 - Detected signals attached to the stream (last 3 visible, expandable to full list)
 - Each signal: commodity, direction (bullish/bearish/neutral), confidence, timeframe, rationale
 
@@ -119,6 +122,10 @@ Dashboard has two views accessible from the top nav:
 - Latest sentiment badge per commodity
 - Last 3 events visible, expandable to full timeline
 - Events accumulate across all streams
+
+**Evaluation view** — live-rendered backtest report: baselines, 95 % CI, reliability diagram, McNemar comparisons, multi-horizon P&L, signal persistence. Pulled from `/api/backtest/professional`.
+
+**Settings view** — swap LLM provider (Anthropic / OpenAI) and API key at runtime without a restart.
 
 ### Transcription-Only Mode
 
@@ -178,11 +185,11 @@ evaluation/            # Offline evaluation framework
 - Word-level timestamps included
 - Default model: `small` (best quality/speed tradeoff on CPU)
 
-### Why Claude Haiku 4.5 (not GPT-4)
-- Fast: lowest latency in the Claude family
-- Cheap: $1/MTok input, $5/MTok output
-- Structured output support for guaranteed valid JSON
-- Sufficient quality for entity extraction and sentiment scoring
+### LLM choice: dual-provider (Claude Haiku 4.5 and OpenAI gpt-4o-mini)
+- Both providers implemented; user picks at onboarding or in the Settings view
+- Chosen for speed + low cost with adequate quality for entity extraction and sentiment scoring
+- Structured output support so malformed JSON from the LLM never crashes the pipeline
+- Measured cost (see below) is ~$0.0007 / 10 s chunk on OpenAI, ~2× on Claude
 
 ### Why asyncio queues (not Kafka/Redis)
 - Appropriate scale for single-machine deployment
@@ -199,24 +206,22 @@ Three async layers connected by `asyncio.Queue`:
 ## Evaluation
 
 ```bash
-# Generate audio samples
-python scripts/generate_samples.py
-
-# Run evaluation
-python -m evaluation.run_eval
+# Level C professional backtest — walk-forward, calibration, baselines, P&L
+python -m evaluation.run_professional_backtest
 ```
 
-12 test excerpts covering: OPEC decisions, Fed rate changes, weather events, sanctions, PMI data, CPI surprises, inventory reports, geopolitical events, neutral commentary, and mixed signals.
+Dataset: **387 curated historical events (2018–2024)** — FOMC meetings, OPEC+ decisions, CPI prints, supply shocks, weather, geopolitics — with multi-horizon Yahoo Finance prices (d0, d1, d3, d7, d14, d30). Walk-forward split (train < 2022, calibration = 2022, test ≥ 2023). Baselines computed: random (28.8 %), always-bullish (47.5 %), keyword (25.9 %) — the LLM must beat always-bullish to add value.
 
-## API Cost Estimate
+Output written to `evaluation/results/professional_backtest_report.md` and rendered live in the Evaluation dashboard view.
 
-| Scenario | Chunks | Est. Cost |
-|----------|--------|-----------|
-| Per chunk (10s) | 1 | $0.0034 |
-| 30-min demo | 180 | $0.61 |
-| Evaluation (12 excerpts) | 12 | $0.04 |
-| Development | ~500 | $1.70 |
-| **Total** | | **~$2.35** |
+## API Cost (measured on real 10-min Yahoo Finance Live stream)
+
+| Provider | Per 10 s chunk | 10 min live | 1 h live | 24/7 month |
+|----------|---------------|-------------|----------|-----------|
+| OpenAI gpt-4o-mini | $0.00074 | $0.045 | $0.27 | ~$194 |
+| Claude Haiku 4.5 | ~$0.0015 | ~$0.09 | ~$0.55 | ~$395 |
+
+A $10 budget covers ~37 h of active OpenAI streaming (~18 h Claude). A proposed noise gate would cut 60–70 % of chunks (see Technický dokument).
 
 ## Tests
 

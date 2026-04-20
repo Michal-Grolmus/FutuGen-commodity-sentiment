@@ -24,3 +24,6 @@ docs/PROJECT_STATE.md
 # Runtime additions stay but aren't re-committed; gitignore selectively:
 # (we keep the file tracked but accept local modifications)
 audio_samples/historical/*.webm
+# Backups and private brief
+*.bak
+futugen_ai_engineer_zadani.docx
